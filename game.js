@@ -85,6 +85,16 @@ function buildRoomScene() {
     for (let k = 0; k < 3; k++) mk(roomGroup, GEO.cone, treeM, [x, 1.7 * s + k * 0.8 * s, z], [(1.1 - k * 0.25) * s, 1.4 * s, (1.1 - k * 0.25) * s]).castShadow = false;
   }
   const moon = mk(roomGroup, GEO.sph, glowM, [22, 15, -70], [4, 4, 4]); moon.castShadow = false;
+  const haloM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.12, depthWrite: false }); roomMats.push(haloM);
+  mk(roomGroup, GEO.sph, haloM, [22, 15, -70.5], [9, 9, 1]).castShadow = false;
+  const shaftM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide }); roomMats.push(shaftM);
+  for (let i = 0; i < 5; i++) { const s = mk(roomGroup, GEO.cone, shaftM, [rand(0, 24), 9, rand(-10, -4)], [rand(1.5, 3), 20, 1.5], [0, 0, rand(-0.2, 0.2)]); s.rotation.x = Math.PI; s.castShadow = false; }
+  const capM = glowMat(th.glow, 0.8); roomMats.push(capM);
+  for (let i = 0; i < 14; i++) {
+    const x = rand(-3, 27), z = rand(-5, -1.5), h = rand(0.15, 0.4);
+    mk(roomGroup, GEO.cyl, trunkM, [x, 1 + h / 2, z], [0.03, h, 0.03]).castShadow = false;
+    mk(roomGroup, GEO.sph, capM, [x, 1 + h, z], [h * 0.6, h * 0.35, h * 0.6]).castShadow = false;
+  }
   for (let i = 0; i < 34; i++) {
     const f = mk(roomGroup, GEO.sph, glowM, [rand(-2, 26), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
     f.castShadow = false; f.userData = { bx: f.position.x, by: f.position.y, ph: rand(0, 6) };
@@ -131,13 +141,13 @@ let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
     jumps: 0, atkT: 0, atkCd: 0, spitCd: 0, dashT: 0, dashCd: 0, inv: 0, hurtT: 0, shield: stats.shield,
-    atkHit: new Set(), dashHit: new Set(), phase: 0 };
+    atkHit: new Set(), dashHit: new Set(), phase: 0, acd: {}, haste: 0, bastion: 0, meteor: false, meteorUp: 0, breathT: 0 };
 }
 function spawnEnemy(kind, x, y) {
   const sz = { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
   const hp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
   const e = { kind, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
-    flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, poisT: 0, poisDps: 0, rot: Math.PI + 0.35, ph: 0 };
+    flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
   enemies.push(e);
   return e;
 }
@@ -196,7 +206,55 @@ function moveBody(b, dt) {
     else if (solid && b.vy < 0) { b.y = p.y + p.h; b.vy = 0; }
   }
 }
-function poison(e) { if (stats.poison) { e.poisT = stats.poisonDur; e.poisDps = stats.poison; } }
+function poison(e) {
+  if (stats.poison) { e.poisT = stats.poisonDur; e.poisDps = stats.poison; }
+  ignite(e);
+}
+function ignite(e) { if (stats.burn) { e.burnT = stats.burnDur; e.burnDps = stats.burn; } }
+const rings = [];
+function ring(x, y, color, size, dur = 0.45) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+  m.position.set(wx(x), wy(y), 0.4); scene.add(m);
+  rings.push({ m, size: size / 40, t: 0, dur });
+}
+function flames(x, y, dir, n) {
+  for (let i = 0; i < n; i++) {
+    const c = ['#ff8a2a', '#ffd23a', '#ff4a1a'][i % 3];
+    burst(x, y, c, 1);
+    const q = particles[particles.length - 1];
+    if (q) { q.vx = dir * rand(3, 9); q.vy = rand(-0.5, 1.5); q.life = rand(0.25, 0.5); }
+  }
+}
+function useActive(id, slot) {
+  const p = player, s = stats, a = TRAIT_BY_ID[id].active, cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+  p.acd[id] = a.cd;
+  if (id === 'roar') {
+    ring(cx, cy, a.color, 260); shake = 10; hitstop = 0.05;
+    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.stunT = e.kind === 'boss' ? 1 : 2.2; e.hp -= 1; e.flash = 0.1; e.vx = Math.sign(e.x - p.x || 1) * 320; e.kb = 0.3; e.vy = -200; }
+  } else if (id === 'gale') { p.haste = 3; ring(cx, cy, a.color, 120); burst(cx, cy, a.color, 16); }
+  else if (id === 'meteor') { p.meteor = true; p.meteorUp = p.ground ? 0.18 : 0; p.inv = Math.max(p.inv, 0.3); }
+  else if (id === 'bastion') { p.inv = 2.5; p.bastion = 2.5; ring(cx, cy, a.color, 90, 0.6); burst(cx, cy, a.color, 14); }
+  else if (id === 'quills') {
+    for (let i = 0; i < 12; i++) { const ang = i / 12 * Math.PI * 2; pshots.push({ x: cx, y: cy, vx: Math.cos(ang) * 480, vy: Math.sin(ang) * 480, dmg: 1.3, quill: true }); }
+    ring(cx, cy, a.color, 70, 0.3);
+  } else if (id === 'miasma') {
+    ring(cx, cy, a.color, 300, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
+    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 300) { e.poisT = Math.max(e.poisT, 5); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 2); e.hp -= 1; e.flash = 0.1; }
+  } else if (id === 'epidemic') {
+    ring(cx, cy, a.color, 700, 0.8); shake = 6;
+    for (const e of enemies) { e.poisT = 7; e.poisDps = Math.max(s.poison, 1) * 1.5; e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
+  } else if (id === 'breath') {
+    p.breathT = 0.35; shake = 3;
+    for (const e of enemies) {
+      const dx = (e.x + e.w / 2 - cx) * p.face;
+      if (dx > -10 && dx < 250 && Math.abs(e.y + e.h / 2 - cy) < 80) { ignite(e); e.burnT = Math.max(e.burnT, 3); e.burnDps = Math.max(e.burnDps, 1.5); e.hp -= 1.5 + s.dmg * 0.5; e.flash = 0.1; e.vx = p.face * 120; e.kb = 0.15; }
+    }
+  }
+}
+function blast(x, y, r, dmg, color) {
+  ring(x, y, color, r * 1.1, 0.5); shake = 14; hitstop = 0.07; burst(x, y, color, 36); burst(x, y, '#ffffff', 10);
+  for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - x, e.y + e.h / 2 - y) < r) { e.hp -= dmg; e.flash = 0.12; e.vy = -380; e.kb = 0.3; e.vx = Math.sign(e.x - x || 1) * 220; poison(e); }
+}
 function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
   toast('Poginil si – evolucija se začne znova', 2.5);
@@ -221,12 +279,25 @@ function hurtPlayer(from, dmg = 1) {
 function updatePlay(dt) {
   const p = player, s = stats;
   p.inv -= dt; p.hurtT -= dt; p.atkCd -= dt; p.atkT -= dt; p.dashCd -= dt; p.dashT -= dt; p.spitCd -= dt;
+  p.haste -= dt; p.bastion -= dt; p.breathT -= dt;
+  for (const id in p.acd) p.acd[id] -= dt;
+  const spd = s.speed * (p.haste > 0 ? 1.5 : 1);
+  if (p.haste > 0 && Math.random() < dt * 30) burst(p.x + 14, p.y + 30, '#7fd8ff', 1);
   if (s.regen) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
   const dir = (down('KeyD', 'ArrowRight') ? 1 : 0) - (down('KeyA', 'ArrowLeft') ? 1 : 0);
   if (dir) p.face = dir;
-  if (p.dashT > 0) { p.vx = p.face * 620; p.vy = 0; }
+  s.actives.forEach((id, i) => {
+    if (hit(ACTIVE_KEYS[i]) && (p.acd[id] || 0) <= 0) {
+      if (id === 'breath') p.acd[id] = 0;
+      useActive(id, i);
+      if (id === 'breath') p.acd[id] = s.breathCd;
+    }
+  });
+  if (p.breathT > 0) flames(p.x + 14 + p.face * 18, p.y + 16, p.face, 4);
+  if (p.meteor) { p.vx *= 0.9; p.vy = p.meteorUp > 0 ? -460 : 1300; p.meteorUp -= dt; if (Math.random() < 0.7) burst(p.x + 14, p.y + 10, '#ffb347', 1); }
+  else if (p.dashT > 0) { p.vx = p.face * 620; p.vy = 0; }
   else {
-    const target = dir * s.speed, accel = p.ground ? 2600 : 1800;
+    const target = dir * spd, accel = p.ground ? 2600 : 1800;
     p.vx += Math.max(-accel * dt, Math.min(accel * dt, target - p.vx));
     const gliding = s.glide && !p.ground && p.vy > 0 && down('Space', 'KeyW', 'ArrowUp');
     p.vy = Math.min(p.vy + (gliding ? 250 : G) * dt, gliding ? s.glideFall : 900);
@@ -237,13 +308,17 @@ function updatePlay(dt) {
   if (hit('Space', 'KeyW', 'ArrowUp')) p.buffer = 0.12;
   if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; }
   else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
-  if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0) p.vy += 3000 * dt;
+  if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0 && !p.meteor) p.vy += 3000 * dt;
   if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; p.inv = Math.max(p.inv, 0.16); p.dashHit = new Set(); }
-  if (hit('KeyJ') && p.atkCd <= 0) { p.atkCd = s.atkCd; p.atkT = 0.12; p.atkHit = new Set(); }
+  if (hit('KeyJ') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; p.atkHit = new Set(); }
   if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
   const vy0 = p.vy, wasG = p.ground;
   moveBody(p, dt);
-  if (p.ground && !wasG && vy0 > 420 && s.stomp) {
+  if (p.ground && !wasG) {
+    if (p.meteor && p.meteorUp <= 0) { p.meteor = false; blast(p.x + 14, p.y + 36, 190, 3 + s.dmg * 1.5, '#ffb347'); }
+    else if (vy0 > 300) { burst(p.x + 14, p.y + 36, '#cfc6b0', 5); ring(p.x + 14, p.y + 36, '#ffffff', 28, 0.25); }
+  }
+  if (p.ground && !wasG && vy0 > 420 && s.stomp && !p.meteor) {
     shake = 8; hitstop = 0.05; burst(p.x + 14, p.y + 36, '#ffd54f', 14);
     for (const e of enemies) if (Math.abs(e.x + e.w / 2 - p.x - 14) < 100 && Math.abs(e.y + e.h - p.y - p.h) < 50) { e.hp -= 2 + s.dmg; e.flash = 0.1; e.kb = 0.25; e.vy = -300; poison(e); }
   }
@@ -254,9 +329,13 @@ function updatePlay(dt) {
   for (const e of enemies) {
     e.flash -= dt; e.kb -= dt; e.t += dt;
     if (e.poisT > 0) { e.poisT -= dt; e.hp -= e.poisDps * dt; if (Math.random() < dt * 8) burst(e.x + e.w / 2, e.y, '#b455d6', 1); }
+    if (e.burnT > 0) { e.burnT -= dt; e.hp -= e.burnDps * dt; if (Math.random() < dt * 16) flames(e.x + e.w / 2, e.y + 6, 0.2, 1); }
+    e.stunT -= dt;
     if (s.aura && Math.hypot(e.x + e.w / 2 - p.x - 14, e.y + e.h / 2 - p.y - 18) < 110) poison(e);
+    if (s.fireAura && Math.hypot(e.x + e.w / 2 - p.x - 14, e.y + e.h / 2 - p.y - 18) < 100) ignite(e);
     const dx = p.x - e.x;
-    if (e.kb <= 0) {
+    if (e.stunT > 0) { if (e.kb <= 0) e.vx = 0; if (Math.random() < dt * 10) burst(e.x + e.w / 2, e.y - 4, '#ffd54f', 1); }
+    else if (e.kb <= 0) {
       e.dir = Math.sign(dx) || 1;
       if (e.kind === 'armored' || e.kind === 'boss') {
         const boss = e.kind === 'boss', rage = boss && e.hp < e.maxHp / 2;
@@ -303,8 +382,8 @@ function updatePlay(dt) {
       e.hp -= d; poison(e); e.flash = 0.1; e.kb = e.kind === 'boss' ? 0 : 0.25;
       e.vx = (box.x + box.w / 2 > e.x + e.w / 2 ? -1 : 1) * s.knock * 2; if (!s.spin) e.vx = p.face * s.knock * 2;
       e.vy = -180; shake = 3; hitstop = 0.045; burst(e.x + e.w / 2, e.y + e.h / 2, '#ffd54f');
-    } else if (overlap(p, e) && p.inv <= 0) {
-      if (s.thorns) { e.hp -= s.thorns; e.flash = 0.1; if (s.thornPoison) poison(e); }
+    } else if (overlap(p, e) && p.inv <= 0 && e.stunT <= 0) {
+      if (s.thorns) { e.hp -= s.thorns; e.flash = 0.1; if (s.thornPoison) poison(e); if (s.thornFire) ignite(e); }
       if (e.hp > 0) hurtPlayer(e, e.kind === 'boss' ? 2 : 1);
     }
   }
@@ -316,13 +395,13 @@ function updatePlay(dt) {
   }
   shots.filter(b => b.dead).forEach(removeObj); shots = shots.filter(b => !b.dead);
   for (const b of pshots) {
-    b.x += b.vx * dt;
+    b.x += b.vx * dt; b.y += (b.vy || 0) * dt;
     const box2 = { x: b.x - 6, y: b.y - 6, w: 12, h: 12 };
     const e = enemies.find(q => overlap(box2, q));
     if (e) {
       const arm = e.kind === 'armored' || e.kind === 'boss', front = !arm || (b.vx * e.face > 0);
-      e.hp -= front ? (arm && !s.pierce ? 0.25 : 1) : 2; poison(e); e.flash = 0.1; b.dead = true; burst(b.x, b.y, '#b455d6', 6);
-    } else if (b.x < 0 || b.x > W || platforms.some(q => q.h > 20 && overlap(box2, q))) b.dead = true;
+      e.hp -= (b.dmg || 1) * (front ? (arm && !s.pierce ? 0.25 : 1) : 2); poison(e); e.flash = 0.1; b.dead = true; burst(b.x, b.y, b.quill ? '#e8e0c0' : '#b455d6', 6);
+    } else if (b.x < 0 || b.x > W || b.y < -50 || b.y > H || platforms.some(q => q.h > 20 && overlap(box2, q))) b.dead = true;
   }
   pshots.filter(b => b.dead).forEach(removeObj); pshots = pshots.filter(b => !b.dead);
 
@@ -331,6 +410,10 @@ function updatePlay(dt) {
     burst(e.x + e.w / 2, e.y + e.h / 2, e.kind === 'boss' ? '#ffd54f' : '#7e57c2', e.kind === 'boss' ? 40 : 14);
     if (e.kind === 'boss') { bossDied = true; shake = 14; }
     if (s.spread && e.poisT > 0) for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 160) poison(o);
+    if (s.cinder && e.burnT > 0) {
+      ring(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 130, 0.35); burst(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 18);
+      for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 130) { o.hp -= 2; o.flash = 0.1; ignite(o); }
+    }
     if (s.lifesteal) p.hp = Math.min(s.maxHp, p.hp + 0.5);
     removeRig(e);
   }
@@ -341,7 +424,7 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function endRoom(boss) {
   mode = 'choose';
-  player.vx = 0; player.atkT = 0; player.dashT = 0;
+  player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
   queue = boss ? ['evo', 'boss'] : ['evo'];
   nextChoice();
@@ -399,7 +482,7 @@ function setPlayerModel(set) {
   pKey = key;
   if (pRig) { pRoot.remove(pRig.root); disposeObj(pRig.root); }
   pRig = buildCreature(set);
-  pRig.baseScale = pRig.model.scale.x;
+  pRig.baseScale = pRig.model.scale.x * Math.max(1, ...[...set].map(id => (TRAIT_BY_ID[id] && TRAIT_BY_ID[id].scale) || 1));
   pRoot.add(pRig.root);
 }
 const angDiff = (a, b) => ((b - a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -430,7 +513,9 @@ function animatePlayer(dt, t) {
   rig.torso.scale.y = 1 + 0.02 * Math.sin(t * 3);
   const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
   rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : 1), bs * (1 + st), bs * (1 - st * 0.5));
-  setGlow(rig, '#ffffff', p.hurtT > 0 ? 0.9 : 0);
+  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
+  if (rig.flame) { rig.flame.forEach((f, i) => { f.scale.y = f.userData.h * (0.8 + 0.35 * Math.sin(t * 14 + i * 2)); }); }
+  if (rig.mouthGlow) rig.mouthGlow.material.emissiveIntensity = p.breathT > 0 ? 2.5 : 0.6 + 0.3 * Math.sin(t * 4);
   if (atk >= 0 || p.atkT > -0.05) {
     slash.visible = p.atkT > 0;
     const r = stats.reach / 40;
@@ -454,7 +539,7 @@ function animateEnemies(dt, t) {
     if (e.kind === 'hopper') { const st = clamp(-e.vy / 1800, -0.15, 0.15); rig.model.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5); }
     if (rig.head) rig.head.rotation.z = Math.sin(t * 2 + e.t) * 0.12 - (e.shootT < 0.4 ? 0.4 : 0);
     if (rig.sac) rig.sac.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(t * 5 + e.t);
-    setGlow(rig, e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff', e.flash > 0 ? 0.9 : e.poisT > 0 ? 0.35 : 0);
+    setGlow(rig, e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff', e.flash > 0 ? 0.9 : e.burnT > 0 ? 0.5 : e.poisT > 0 ? 0.35 : 0);
   }
   for (const b of shots.concat(pshots)) {
     if (!b.obj) {
@@ -507,6 +592,15 @@ function drawHUD() {
     ui.fillStyle = '#222a'; ui.fillRect(300, 14, 360, 14); ui.fillStyle = '#e53935'; ui.fillRect(300, 14, 360 * Math.max(0, boss.hp) / boss.maxHp, 14);
     ui.fillStyle = '#fff'; ui.textAlign = 'center'; ui.fillText('ŠEF', 480, 46); ui.textAlign = 'left';
   }
+  stats.actives.forEach((id, i) => {
+    const a = TRAIT_BY_ID[id].active, cd = Math.max(0, player.acd[id] || 0), x = 16 + i * 64, y = H - 70, f = cd / a.cd;
+    ui.fillStyle = '#10121ccc'; ui.fillRect(x, y, 56, 56);
+    ui.fillStyle = a.color; ui.globalAlpha = cd > 0 ? 0.35 : 1; ui.fillRect(x + 4, y + 4, 48, 30); ui.globalAlpha = 1;
+    ui.fillStyle = '#10121c'; ui.font = 'bold 11px monospace'; ui.textAlign = 'center'; ui.fillText(a.name, x + 28, y + 23);
+    ui.fillStyle = '#fff'; ui.font = 'bold 16px monospace'; ui.fillText(ACTIVE_KEY_LABELS[i], x + 28, y + 52);
+    if (cd > 0) { ui.fillStyle = '#000a'; ui.fillRect(x, y + 56 * (1 - f), 56, 56 * f); ui.fillStyle = '#fff'; ui.font = '14px monospace'; ui.fillText(cd.toFixed(1), x + 28, y + 24); }
+    ui.strokeStyle = a.color; ui.lineWidth = 2; ui.strokeRect(x, y, 56, 56); ui.textAlign = 'left';
+  });
   if (toastT > 0) { ui.textAlign = 'center'; ui.font = '22px monospace'; ui.fillStyle = `rgba(255,255,255,${Math.min(1, toastT)})`; ui.fillText(toastText, W / 2, 120); ui.textAlign = 'left'; }
 }
 function drawChoose() {
@@ -520,7 +614,9 @@ function drawChoose() {
   ui.font = '13px monospace'; ui.fillStyle = '#aab';
   ui.fillText(boss ? 'Edinstvena lastnost, ki jo dobiš samo od šefa.' : 'Vsaka izbira zapre sosednje veje ključa. Premakni miško čez kartico za predogled.', W / 2, 66);
   ui.textAlign = 'left'; ui.font = '12px monospace';
-  lineage(owned).forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 96 + i * 17); });
+  const lin = lineage(owned);
+  if (lin.length) { ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(10, 84, 470, 12 + lin.length * 17); }
+  lin.forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 100 + i * 17); });
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
     ui.fillStyle = hv ? '#252a40' : '#171b2c'; ui.fillRect(r.x, r.y, r.w, r.h);
@@ -552,6 +648,9 @@ function frame(now) {
   hitstop -= rawDt; time += rawDt; toastT -= rawDt;
   if (mode === 'play') updatePlay(dt); else updateChoose(rawDt);
   for (const q of particles) { q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt; q.vy -= 20 * rawDt; q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt; }
+  for (const r of rings) { r.t += rawDt; const k = r.t / r.dur; r.m.scale.setScalar(0.2 + r.size * Math.min(1, k)); r.m.material.opacity = 0.9 * (1 - k); }
+  rings.filter(r => r.t >= r.dur).forEach(r => { scene.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); });
+  for (let i = rings.length - 1; i >= 0; i--) if (rings[i].t >= rings[i].dur) rings.splice(i, 1);
   particles.filter(q => q.life <= 0).forEach(q => scene.remove(q.m));
   particles = particles.filter(q => q.life > 0);
   shake = Math.max(0, shake - 30 * rawDt);
