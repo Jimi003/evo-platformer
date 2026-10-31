@@ -187,6 +187,7 @@ function startRoom() {
   player = newPlayer();
   player.hp = Math.min(stats.maxHp, keep + 1);
   mode = 'play';
+  Snd.setMood(room, isBoss);
   buildRoomScene();
   setPlayerModel(owned);
 }
@@ -228,6 +229,7 @@ function flames(x, y, dir, n) {
 function useActive(id, slot) {
   const p = player, s = stats, a = TRAIT_BY_ID[id].active, cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   p.acd[id] = a.cd;
+  Snd.play(id === 'roar' || id === 'gale' || id === 'bastion' || id === 'quills' || id === 'miasma' || id === 'epidemic' || id === 'breath' ? id : 'dash');
   if (id === 'roar') {
     ring(cx, cy, a.color, 260); shake = 10; hitstop = 0.05;
     for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.stunT = e.kind === 'boss' ? 1 : 2.2; e.hp -= 1; e.flash = 0.1; e.vx = Math.sign(e.x - p.x || 1) * 320; e.kb = 0.3; e.vy = -200; }
@@ -252,12 +254,13 @@ function useActive(id, slot) {
   }
 }
 function blast(x, y, r, dmg, color) {
+  Snd.play('blast');
   ring(x, y, color, r * 1.1, 0.5); shake = 14; hitstop = 0.07; burst(x, y, color, 36); burst(x, y, '#ffffff', 10);
   for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - x, e.y + e.h / 2 - y) < r) { e.hp -= dmg; e.flash = 0.12; e.vy = -380; e.kb = 0.3; e.vx = Math.sign(e.x - x || 1) * 220; poison(e); }
 }
 function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
-  toast('Poginil si – evolucija se začne znova', 2.5);
+  toast('Poginil si – evolucija se začne znova', 2.5); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
   run.revived = false; room = 0; player = null;
   startRoom();
@@ -265,12 +268,13 @@ function die() {
 function hurtPlayer(from, dmg = 1) {
   const p = player;
   if (p.inv > 0) return;
-  if (p.shield) { p.shield = false; p.inv = 0.6; burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
+  if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('bastion'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
+  Snd.play('hurt');
   p.hp -= dmg; p.inv = stats.invTime; p.hurtT = 0.2; hitstop = 0.06;
   p.vx = (p.x < from.x ? -1 : 1) * 260; p.vy = -260; shake = 6; burst(p.x + 14, p.y + 18, '#ffffff');
   if (p.hp <= 0) {
     if (stats.revive && !run.revived) {
-      run.revived = true; p.hp = Math.ceil(stats.maxHp / 2); p.inv = 2; burst(p.x + 14, p.y + 18, '#ffd54f', 30); toast('Nesmrtnik: vstal si!', 1.5);
+      run.revived = true; p.hp = Math.ceil(stats.maxHp / 2); p.inv = 2; burst(p.x + 14, p.y + 18, '#ffd54f', 30); toast('Nesmrtnik: vstal si!', 1.5); Snd.play('revive');
     } else die();
   }
 }
@@ -306,12 +310,12 @@ function updatePlay(dt) {
   p.coyote = p.ground ? 0.1 : p.coyote - dt; p.buffer -= dt;
   if (p.ground) p.jumps = 0;
   if (hit('Space', 'KeyW', 'ArrowUp')) p.buffer = 0.12;
-  if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; }
-  else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
+  if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; Snd.play('jump'); }
+  else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; Snd.play('air'); burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
   if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0 && !p.meteor) p.vy += 3000 * dt;
-  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; p.inv = Math.max(p.inv, 0.16); p.dashHit = new Set(); }
-  if (hit('KeyJ') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; p.atkHit = new Set(); }
-  if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
+  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.16); p.dashHit = new Set(); }
+  if (hit('KeyJ') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; Snd.play('atk'); p.atkHit = new Set(); }
+  if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; Snd.play('spit'); pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
   const vy0 = p.vy, wasG = p.ground;
   moveBody(p, dt);
   if (p.ground && !wasG) {
@@ -379,7 +383,7 @@ function updatePlay(dt) {
         burst(e.x + (behind ? 0 : e.w), e.y + 14, behind ? '#ff5252' : '#b0bec5', 6);
       }
       if (s.ambush && e.hp >= e.maxHp - 0.001) d *= 2;
-      e.hp -= d; poison(e); e.flash = 0.1; e.kb = e.kind === 'boss' ? 0 : 0.25;
+      e.hp -= d; poison(e); Snd.play(e.kind === 'armored' && !s.pierce && !(d > s.dmg) ? 'armor' : 'hit'); e.flash = 0.1; e.kb = e.kind === 'boss' ? 0 : 0.25;
       e.vx = (box.x + box.w / 2 > e.x + e.w / 2 ? -1 : 1) * s.knock * 2; if (!s.spin) e.vx = p.face * s.knock * 2;
       e.vy = -180; shake = 3; hitstop = 0.045; burst(e.x + e.w / 2, e.y + e.h / 2, '#ffd54f');
     } else if (overlap(p, e) && p.inv <= 0 && e.stunT <= 0) {
@@ -408,6 +412,7 @@ function updatePlay(dt) {
   let bossDied = false;
   for (const e of enemies) if (e.hp <= 0) {
     burst(e.x + e.w / 2, e.y + e.h / 2, e.kind === 'boss' ? '#ffd54f' : '#7e57c2', e.kind === 'boss' ? 40 : 14);
+    Snd.play(e.kind === 'boss' ? 'bossKill' : 'kill');
     if (e.kind === 'boss') { bossDied = true; shake = 14; }
     if (s.spread && e.poisT > 0) for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 160) poison(o);
     if (s.cinder && e.burnT > 0) {
@@ -426,6 +431,7 @@ function endRoom(boss) {
   mode = 'choose';
   player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
+  Snd.play('clear'); Snd.setMood(room, false);
   queue = boss ? ['evo', 'boss'] : ['evo'];
   nextChoice();
 }
@@ -446,6 +452,7 @@ function pick(opt) {
   player.shield = stats.shield;
   burst(player.x + 14, player.y + 18, NICHES[opt.niche].color, 30);
   shake = 4;
+  Snd.play(opt.boss ? 'bossPick' : 'pick');
   nextChoice();
 }
 function cardRect(i) { return { x: 30 + i * 305, y: i === choice.hover ? 346 : 356, w: 290, h: 176 }; }
@@ -513,7 +520,7 @@ function animatePlayer(dt, t) {
   rig.torso.scale.y = 1 + 0.02 * Math.sin(t * 3);
   const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
   rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : 1), bs * (1 + st), bs * (1 - st * 0.5));
-  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
+  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', mode !== 'play' ? 0 : p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
   if (rig.flame) { rig.flame.forEach((f, i) => { f.scale.y = f.userData.h * (0.8 + 0.35 * Math.sin(t * 14 + i * 2)); }); }
   if (rig.mouthGlow) rig.mouthGlow.material.emissiveIntensity = p.breathT > 0 ? 2.5 : 0.6 + 0.3 * Math.sin(t * 4);
   if (atk >= 0 || p.atkT > -0.05) {
@@ -614,6 +621,13 @@ function drawChoose() {
   ui.font = '13px monospace'; ui.fillStyle = '#aab';
   ui.fillText(boss ? 'Edinstvena lastnost, ki jo dobiš samo od šefa.' : 'Vsaka izbira zapre sosednje veje ključa. Premakni miško čez kartico za predogled.', W / 2, 66);
   ui.textAlign = 'left'; ui.font = '12px monospace';
+  const inv = nicheInvest(owned);
+  Object.keys(inv).forEach((k, i) => {
+    const x = 530 + (i % 3) * 140, y = 92 + Math.floor(i / 3) * 20;
+    ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(x, y - 13, 132, 18);
+    ui.fillStyle = NICHES[k].color; ui.fillRect(x, y - 13, 4, 18);
+    ui.fillText(NICHES[k].name + (inv[k] ? ' ' + '●'.repeat(Math.min(5, inv[k])) : ''), x + 10, y);
+  });
   const lin = lineage(owned);
   if (lin.length) { ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(10, 84, 470, 12 + lin.length * 17); }
   lin.forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 100 + i * 17); });

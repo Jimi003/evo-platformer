@@ -36,9 +36,11 @@ function glowMat(c, i) { return new THREE.MeshStandardMaterial({ color: c, emiss
 
 function creatureColors(owned) {
   const inv = nicheInvest(owned);
+  // končne veje (brez naslednikov) barvo niše izrazito poudarijo
+  for (const t of TRAITS) if (owned.has(t.id) && inv[t.niche] !== undefined && !TRAITS.some(x => x.parent === t.id)) inv[t.niche] += 4 + traitTier(t) * 2;
   let tot = 0, sum = 0, r = 0, g = 0, b = 0, dom = null, best = 0;
   for (const n in inv) {
-    const w = inv[n] * inv[n];
+    const w = inv[n] * inv[n] * inv[n];
     sum += inv[n];
     if (inv[n] > best) { best = inv[n]; dom = n; }
     if (!w) continue;
