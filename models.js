@@ -190,6 +190,28 @@ function buildCreature(owned) {
   if (['bossheart', 'cracker', 'alpha'].some(has)) for (let i = -1; i <= 1; i++) spike(head, goldM, [-0.06, 0.17, i * 0.07], 0.03, 0.16 - Math.abs(i) * 0.04, [0, 0, 0.3]);
   if (has('undying')) { const h = mk(head, GEO.torus, goldM, [0, 0.42, 0], [0.2, 0.2, 0.2], [Math.PI / 2, 0, 0]); h.castShadow = false; }
 
+  // globlje veje in ogenj
+  rig.flame = [];
+  const fireM = glowMat('#ff8a2a', 0.9), emberM = glowMat('#ffd23a', 1.1);
+  const flameAt = (parent, p, h, w, mat) => { const f = spike(parent, mat || fireM, p, w, h, [0, 0, 0]); f.children[0].castShadow = false; f.userData.h = h; f.children[0].userData.h = h; rig.flame.push(f.children[0]); return f; };
+  if (has('ember')) for (let i = 0; i < 5; i++) mk(torso, GEO.sph, fireM, [-0.17, ty + 0.28 - i * 0.1, (i % 2 ? 1 : -1) * 0.1], [0.045, 0.045, 0.045]).castShadow = false;
+  if (has('breath')) { rig.mouthGlow = mk(head, GEO.sph, glowMat('#ff7a1a', 0.7), [0.24, -0.06, 0], [0.08, 0.06, 0.1]); rig.mouthGlow.castShadow = false; }
+  if (has('scorch')) for (let i = 0; i < 4; i++) flameAt(torso, [-0.2, ty + 0.3 - i * 0.12, 0], 0.2 - i * 0.02, 0.05);
+  if (has('molten')) for (const side of [-1, 1]) for (let i = 0; i < 3; i++) mk(torso, GEO.box, fireM, [0.0 - i * 0.06, ty + 0.15 - i * 0.12, side * 0.255], [0.14, 0.025, 0.02], [0, 0, 0.5 * side]).castShadow = false;
+  if (has('inferno')) for (let i = -1; i <= 1; i++) flameAt(head, [-0.04, 0.17, i * 0.08], 0.28 - Math.abs(i) * 0.08, 0.05, emberM);
+  if (has('magma')) for (const side of [-1, 1]) { mk(torso, GEO.sph, darkM, [0.02, ty + 0.3, side * 0.28], [0.15, 0.1, 0.12]); mk(torso, GEO.sph, fireM, [0.1, ty + 0.3, side * 0.3], [0.05, 0.04, 0.05]); }
+  if (has('cinder')) for (let i = 0; i < 4; i++) mk(torso, GEO.sph, emberM, [-0.3 - i * 0.02, ty + 0.35 - i * 0.13, (i % 2 ? 1 : -1) * 0.16], [0.035, 0.035, 0.035]).castShadow = false;
+  if (has('roar')) for (let i = 0; i < 7; i++) { const a = -1.1 + i * 0.37; spike(head, boneM, [-0.1, -0.05, 0], 0.03, 0.16, [0, 0, a + 1.57 + 1.2]); }
+  if (has('trample')) for (let i = -1; i <= 1; i++) spike(head, armorM, [0.12, 0.17, i * 0.06], 0.035, 0.1, [0, 0, -0.6]);
+  if (has('gale')) for (const side of [-1, 1]) spike(head, accM, [-0.08, 0.08, side * 0.18], 0.03, 0.26, [side * 0.9, 0, 1.9]);
+  if (has('meteor')) for (const side of [-1, 1]) { mk(torso, GEO.sph, armorM, [0.05, ty + 0.2, side * 0.3], [0.13, 0.12, 0.12]); mk(torso, GEO.sph, fireM, [0.12, ty + 0.22, side * 0.34], [0.04, 0.04, 0.04]); }
+  if (has('bastion')) for (let i = 0; i < 3; i++) mk(torso, GEO.box, glowMat('#9be15d', 0.45), [0.05, ty + 0.2 - i * 0.14, 0.27 * (i % 2 ? 1 : -1)], [0.16, 0.08, 0.04], [0, 0, 0.3]).castShadow = false;
+  if (has('quills')) for (let i = 0; i < 7; i++) spike(torso, boneM, [-0.2, ty + 0.32 - i * 0.07, ((i % 3) - 1) * 0.1], 0.025, 0.3, [0, 0, 1.0 + (i % 3) * 0.12]);
+  if (has('colossus')) for (const side of [-1, 1]) mk(torso, GEO.sph, armorM, [0.04, ty + 0.34, side * 0.3], [0.2, 0.13, 0.15]);
+  if (has('miasma')) for (let i = 0; i < 6; i++) mk(torso, GEO.sph, glowMat('#c24ff0', 0.5), [-0.15 + (i % 3) * 0.1, ty + 0.1 - Math.floor(i / 3) * 0.2, (i % 2 ? 1 : -1) * 0.25], [0.06, 0.06, 0.06]).castShadow = false;
+  if (has('epidemic')) for (let i = 0; i < 4; i++) mk(head, GEO.sph, glowMat('#9be15d', 0.7), [-0.05 + i * 0.06, 0.13 - (i % 2) * 0.05, (i % 2 ? 1 : -1) * 0.12], [0.045, 0.045, 0.045]).castShadow = false;
+  if (has('neuro')) for (const side of [-1, 1]) mk(head, GEO.sph, glowMat('#e29bff', 0.9), [0.14, 0.04, side * 0.15], [0.025, 0.025, 0.025]);
+
   // krila
   rig.wings = [];
   if (has('wings')) {
