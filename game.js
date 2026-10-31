@@ -513,7 +513,7 @@ function animatePlayer(dt, t) {
   rig.torso.scale.y = 1 + 0.02 * Math.sin(t * 3);
   const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
   rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : 1), bs * (1 + st), bs * (1 - st * 0.5));
-  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
+  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', mode !== 'play' ? 0 : p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
   if (rig.flame) { rig.flame.forEach((f, i) => { f.scale.y = f.userData.h * (0.8 + 0.35 * Math.sin(t * 14 + i * 2)); }); }
   if (rig.mouthGlow) rig.mouthGlow.material.emissiveIntensity = p.breathT > 0 ? 2.5 : 0.6 + 0.3 * Math.sin(t * 4);
   if (atk >= 0 || p.atkT > -0.05) {
@@ -614,6 +614,13 @@ function drawChoose() {
   ui.font = '13px monospace'; ui.fillStyle = '#aab';
   ui.fillText(boss ? 'Edinstvena lastnost, ki jo dobiš samo od šefa.' : 'Vsaka izbira zapre sosednje veje ključa. Premakni miško čez kartico za predogled.', W / 2, 66);
   ui.textAlign = 'left'; ui.font = '12px monospace';
+  const inv = nicheInvest(owned);
+  Object.keys(inv).forEach((k, i) => {
+    const x = 530 + (i % 3) * 140, y = 92 + Math.floor(i / 3) * 20;
+    ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(x, y - 13, 132, 18);
+    ui.fillStyle = NICHES[k].color; ui.fillRect(x, y - 13, 4, 18);
+    ui.fillText(NICHES[k].name + (inv[k] ? ' ' + '●'.repeat(Math.min(5, inv[k])) : ''), x + 10, y);
+  });
   const lin = lineage(owned);
   if (lin.length) { ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(10, 84, 470, 12 + lin.length * 17); }
   lin.forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 100 + i * 17); });

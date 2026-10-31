@@ -133,6 +133,9 @@ function offers(owned, n = 3) {
   const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
   const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open').map(t => ({ t, w: 1 + 2.5 * inv[t.niche] }));
   const out = [];
+  // ena ponudba je vedno iz niše, v katero še nisi vložil (če je kakšna odprta)
+  const fresh = pool.filter(x => inv[x.t.niche] === 0);
+  if (owned.size > 0 && fresh.length && n >= 3) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
   while (out.length < n && pool.length) {
     let r = Math.random() * pool.reduce((a, b) => a + b.w, 0), i = 0;
     while (i < pool.length - 1 && (r -= pool[i].w) > 0) i++;
