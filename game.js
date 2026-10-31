@@ -134,8 +134,19 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 
 // ---------- Stanje igre ----------
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
-let run = { revived: false }, points = 0;
-let room = 0, mode = 'play', platforms = [], enemies = [], shots = [], pshots = [], player = null;
+let run = { revived: false, bosses: 0 }, points = 0;
+let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null;
+const showcase = () => mode === 'choose' || mode === 'menu';
+// Rekord se shrani v brskalnik (localStorage).
+let best = { room: 0, bosses: 0, build: '' };
+try { Object.assign(best, JSON.parse(localStorage.getItem('evo-best') || '{}')); } catch (e) { /* brez shranjevanja */ }
+function saveBest(done) {
+  const text = lineage(owned).map(l => `${NICHES[l.niche].name}: ${l.text}`).join(' | ');
+  let rec = false;
+  if (done > best.room || (done === best.room && run.bosses > best.bosses)) { best = { room: done, bosses: run.bosses, build: text }; rec = true; }
+  try { localStorage.setItem('evo-best', JSON.stringify(best)); } catch (e) { /* brez shranjevanja */ }
+  return rec;
+}
 let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [], choiceCool = 0, mouse = { x: -1, y: -1 };
 
 function newPlayer() {
@@ -260,9 +271,9 @@ function blast(x, y, r, dmg, color) {
 }
 function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
-  toast('Poginil si – evolucija se začne znova', 2.5); Snd.play('die');
+  toast(`Poginil si na stopnji ${room} – rekord: stopnja ${best.room}`, 3); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  run.revived = false; room = 0; player = null;
+  run.revived = false; run.bosses = 0; room = 0; player = null;
   startRoom();
 }
 function hurtPlayer(from, dmg = 1) {
@@ -413,7 +424,7 @@ function updatePlay(dt) {
   for (const e of enemies) if (e.hp <= 0) {
     burst(e.x + e.w / 2, e.y + e.h / 2, e.kind === 'boss' ? '#ffd54f' : '#7e57c2', e.kind === 'boss' ? 40 : 14);
     Snd.play(e.kind === 'boss' ? 'bossKill' : 'kill');
-    if (e.kind === 'boss') { bossDied = true; shake = 14; }
+    if (e.kind === 'boss') { bossDied = true; run.bosses++; shake = 14; }
     if (s.spread && e.poisT > 0) for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 160) poison(o);
     if (s.cinder && e.burnT > 0) {
       ring(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 130, 0.35); burst(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 18);
@@ -427,11 +438,50 @@ function updatePlay(dt) {
 }
 
 // ---------- Izbira evolucije ----------
+function resetRun() {
+  owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
+  run.revived = false; run.bosses = 0; room = 0; player = null; choice = null;
+}
+function beginGame() { resetRun(); startRoom(); Snd.play('clear'); }
+function toMenu() { resetRun(); startRoom(); clearObjects(); mode = 'menu'; Snd.setMood(0, false); }
+const CONTROLS = [
+  ['A / D ali ← →', 'premik'], ['Preslednica / W', 'skok (drži za višji skok)'], ['J', 'napad'],
+  ['K / Shift', 'sunek (če imaš lastnost)'], ['L', 'strupeni pljunek (če ga imaš)'], ['E / Q / R', 'aktivne sposobnosti, po vrstnem redu pridobitve'],
+  ['1 / 2 / 3 ali klik', 'izbira evolucije'], ['P / Esc', 'pavza'], ['M', 'utišaj zvok'],
+];
+function drawPanel(title, sub, lines) {
+  ui.fillStyle = 'rgba(6,8,18,.78)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 44px monospace'; ui.fillText(title, W / 2, 84);
+  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(sub, W / 2, 112);
+  ui.textAlign = 'left'; ui.font = '14px monospace';
+  CONTROLS.forEach((c, i) => { ui.fillStyle = '#ffd54f'; ui.fillText(c[0], 200, 160 + i * 24); ui.fillStyle = '#e8ecff'; ui.fillText(c[1], 400, 160 + i * 24); });
+  ui.textAlign = 'center'; ui.font = '14px monospace';
+  lines.forEach((l, i) => { ui.fillStyle = l.color || '#aab'; ui.fillText(l.text, W / 2, 396 + i * 22); });
+}
+function drawMenu() {
+  const rec = best.room ? [{ text: `Rekord: stopnja ${best.room} · poraženi šefi: ${best.bosses}`, color: '#9be15d' }, { text: best.build ? 'Najboljša linija – ' + best.build : '', color: '#7f8aa8' }] : [{ text: 'Še nimaš rekorda – srečno!', color: '#9be15d' }];
+  const pulse = 0.6 + 0.4 * Math.sin(time * 4);
+  drawPanel('EVO PLATFORMER', 'Teci, skači, bojuj se in se razvijaj po evolucijskem ključu.',
+    [{ text: 'Vsaka stopnja = 1 evolucija (3 ponudbe). Vsak 5. nivo je šef. Ob smrti se vse začne znova.', color: '#c8d0e8' }, ...rec,
+      { text: 'Pritisni ENTER, preslednico ali klikni za začetek', color: `rgba(255,255,255,${pulse})` }]);
+}
+function drawPause() {
+  drawPanel('PAVZA', `Stopnja ${room} · najboljši rekord: stopnja ${best.room}`,
+    [{ text: 'P / Esc ali klik – nadaljuj', color: '#fff' }, { text: 'Backspace – nazaj v meni (izgubiš trenutni tek)', color: '#ff9a6a' }]);
+}
+function updateMenu() {
+  if (mode === 'menu' && hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
+  else if (mode === 'pause') {
+    if (hit('KeyP', 'Escape', 'Enter')) mode = 'play';
+    else if (hit('Backspace')) { saveBest(room - 1); toMenu(); }
+  }
+}
 function endRoom(boss) {
   mode = 'choose';
   player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
   Snd.play('clear'); Snd.setMood(room, false);
+  if (saveBest(room) && room > 1) toast('Nov rekord: stopnja ' + room + '!', 2.5);
   queue = boss ? ['evo', 'boss'] : ['evo'];
   nextChoice();
 }
@@ -466,6 +516,8 @@ uic.addEventListener('mousemove', e => {
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
 });
 uic.addEventListener('click', e => {
+  if (mode === 'menu') { beginGame(); return; }
+  if (mode === 'pause') { mode = 'play'; return; }
   if (mode !== 'choose' || !choice || choiceCool > 0) return;
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
@@ -497,17 +549,17 @@ function animatePlayer(dt, t) {
   const p = player, rig = pRig;
   pRoot.position.set(wx(p.x + p.w / 2), wy(p.y + p.h), 0);
   pRoot.visible = !(p.inv > 0 && Math.floor(p.inv * 20) % 2 && p.dashT <= 0 && mode === 'play');
-  const target = mode === 'choose' ? -0.5 + Math.sin(t * 0.9) * 0.55 : p.face > 0 ? -0.4 : Math.PI + 0.4;
-  rig.model.rotation.y += angDiff(rig.model.rotation.y, target) * Math.min(1, dt * (mode === 'choose' ? 3 : 14));
+  const target = showcase() ? -0.5 + Math.sin(t * 0.9) * 0.55 : p.face > 0 ? -0.4 : Math.PI + 0.4;
+  rig.model.rotation.y += angDiff(rig.model.rotation.y, target) * Math.min(1, dt * (showcase() ? 3 : 14));
   const speed = Math.abs(p.vx), mv = p.ground && speed > 30 ? 1 : 0;
   p.phase += dt * (6 + speed / 28) * (mv ? 1 : 0);
   const sw = Math.sin(p.phase);
-  if (p.ground || mode === 'choose') { rig.legs[0].rotation.z = sw * 0.8 * mv; rig.legs[1].rotation.z = -sw * 0.8 * mv; }
+  if (p.ground || showcase()) { rig.legs[0].rotation.z = sw * 0.8 * mv; rig.legs[1].rotation.z = -sw * 0.8 * mv; }
   else { rig.legs[0].rotation.z = 0.7; rig.legs[1].rotation.z = -0.4; }
   const atk = p.atkT > 0 ? 1 - p.atkT / 0.12 : -1;
   rig.arms.forEach((a, i) => {
     if (atk >= 0) a.rotation.z = -0.8 + 3.0 * Math.min(1, atk * (i ? 1.0 : 1.25));
-    else a.rotation.z = (i ? -sw : sw) * 0.7 * mv + (p.ground || mode === 'choose' ? 0.1 : -0.5);
+    else a.rotation.z = (i ? -sw : sw) * 0.7 * mv + (p.ground || showcase() ? 0.1 : -0.5);
   });
   rig.tail.forEach((s, i) => { s.rotation.y = Math.sin(t * 5 + i * 0.7) * 0.22 * (1 + mv); s.rotation.z = -0.04 * i + Math.sin(t * 4 + i) * 0.05 + (mv ? 0.05 : 0); });
   const flapping = !p.ground && mode === 'play';
@@ -563,9 +615,9 @@ let camX = 12, camY = 7, camZ = 20, lookX = 12, lookY = 6.9;
 function updateCamera(dt, t) {
   const pcx = wx(player.x + player.w / 2), pcy = wy(player.y + player.h / 2);
   let tx, ty, tz, lx, ly;
-  if (mode === 'choose') { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 0.75; }
+  if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 0.75; }
   else { tx = 12 + (pcx - 12) * 0.15; ty = 6.9 + (pcy - 6.9) * 0.08; tz = 20; lx = tx; ly = ty; }
-  const k = Math.min(1, dt * (mode === 'choose' ? 3 : 4));
+  const k = Math.min(1, dt * (showcase() ? 3 : 4));
   camX += (tx - camX) * k; camY += (ty - camY) * k; camZ += (tz - camZ) * k; lookX += (lx - lookX) * k; lookY += (ly - lookY) * k;
   const sh = shake / 40;
   camera.position.set(camX + (Math.random() - 0.5) * sh, camY + (Math.random() - 0.5) * sh, camZ);
@@ -584,6 +636,9 @@ function wrap(text, maxW) {
   return lines;
 }
 function drawHUD() {
+  ui.textAlign = 'right'; ui.font = '13px monospace'; ui.fillStyle = '#9be15d';
+  ui.fillText(`Rekord: stopnja ${best.room}`, W - 16, 24);
+  ui.fillStyle = '#7f8aa8'; ui.fillText('P – pavza · M – zvok', W - 16, 42);
   ui.textAlign = 'left';
   const hpN = Math.ceil(stats.maxHp), rows = Math.ceil(hpN / 10), off = (rows - 1) * 19;
   for (let i = 0; i < hpN; i++) {
@@ -660,7 +715,8 @@ function frame(now) {
   const rawDt = Math.min(0.033, (now - last) / 1000); last = now;
   const dt = rawDt * (hitstop > 0 ? 0.08 : 1);
   hitstop -= rawDt; time += rawDt; toastT -= rawDt;
-  if (mode === 'play') updatePlay(dt); else updateChoose(rawDt);
+  if (mode === 'play') { if (hit('KeyP', 'Escape')) mode = 'pause'; else updatePlay(dt); }
+  else if (mode === 'choose') updateChoose(rawDt); else updateMenu();
   for (const q of particles) { q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt; q.vy -= 20 * rawDt; q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt; }
   for (const r of rings) { r.t += rawDt; const k = r.t / r.dur; r.m.scale.setScalar(0.2 + r.size * Math.min(1, k)); r.m.material.opacity = 0.9 * (1 - k); }
   rings.filter(r => r.t >= r.dur).forEach(r => { scene.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); });
@@ -677,9 +733,11 @@ function frame(now) {
   }
   renderer.render(scene, camera);
   ui.clearRect(0, 0, W, H);
-  if (player) { drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
+  if (player && mode !== 'menu') { drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
+  if (mode === 'menu') drawMenu(); else if (mode === 'pause') drawPause();
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);
 }
-startRoom();
+toMenu();
+addEventListener('blur', () => { if (mode === 'play') mode = 'pause'; });
 requestAnimationFrame(frame);
