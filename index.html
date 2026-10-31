@@ -1,7 +1,16 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Evo Platformer</title>
-<style>html,body{margin:0;background:#12141c;color:#ddd;font-family:monospace;display:flex;flex-direction:column;align-items:center}
-canvas{background:#1b1f2b;margin-top:12px;max-width:100%}</style></head>
-<body><canvas id="c" width="960" height="540"></canvas>
-<p>Move: A/D or arrows · Jump: Space/W · Attack: J · Dash: K/Shift · Spit: L · Evolve screen: click or 1-9, Enter to continue</p>
-<script src="traits.js"></script><script src="game.js"></script></body></html>
+<html lang="sl"><head><meta charset="utf-8"><title>Evo Platformer 3D</title>
+<style>
+html,body{margin:0;background:#0d0f16;color:#ccd;font-family:monospace;display:flex;flex-direction:column;align-items:center}
+#wrap{position:relative;margin-top:10px;width:min(98vw,1280px);aspect-ratio:16/9}
+#wrap canvas{position:absolute;inset:0;width:100%;height:100%}
+p{margin:8px;font-size:13px}
+</style></head>
+<body>
+<div id="wrap"><canvas id="gl"></canvas><canvas id="ui"></canvas></div>
+<p>Premik: A/D ali puščice · Skok: Preslednica/W · Napad: J · Sunek: K/Shift · Pljunek: L · Evolucija: klik ali 1-3</p>
+<script src="lib/three.min.js"></script>
+<script src="traits.js"></script>
+<script src="models.js"></script>
+<script src="game.js"></script>
+</body></html>
