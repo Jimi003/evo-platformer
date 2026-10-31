@@ -360,7 +360,7 @@ function blast(x, y, r, dmg, color) {
 }
 function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
-  toast(`Poginil si na stopnji ${room} – rekord: stopnja ${best.room}`, 3); Snd.play('die');
+  toast(`Tek se je končal na stopnji ${room}. Rekord: ${best.room}. stopnja.`, 3); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
   run.revived = false; run.bosses = 0; room = 0; player = null;
   startRoom();
@@ -374,7 +374,7 @@ function hurtPlayer(from, dmg = 1) {
   p.vx = (p.x < from.x ? -1 : 1) * 260; p.vy = -260; shake = 6; burst(p.x + 14, p.y + 18, '#ffffff');
   if (p.hp <= 0) {
     if (stats.revive && !run.revived) {
-      run.revived = true; p.hp = Math.ceil(stats.maxHp / 2); p.inv = 2; burst(p.x + 14, p.y + 18, '#ffd54f', 30); toast('Nesmrtnik: vstal si!', 1.5); Snd.play('revive');
+      run.revived = true; p.hp = Math.ceil(stats.maxHp / 2); p.inv = 2; burst(p.x + 14, p.y + 18, '#ffd54f', 30); toast('Vstal si od mrtvih!', 1.5); Snd.play('revive');
     } else die();
   }
 }
@@ -539,9 +539,9 @@ function resetRun() {
 function beginGame() { resetRun(); startRoom(); Snd.play('clear'); }
 function toMenu() { resetRun(); startRoom(); clearObjects(); mode = 'menu'; Snd.music('menu'); }
 const CONTROLS = [
-  ['A / D ali ← →', 'premik'], ['Preslednica / W', 'skok (drži za višji skok)'], ['J', 'napad'],
-  ['K / Shift', 'sunek (če imaš lastnost)'], ['L', 'strupeni pljunek (če ga imaš)'], ['E / Q / R', 'aktivne sposobnosti, po vrstnem redu pridobitve'],
-  ['1 / 2 / 3 ali klik', 'izbira evolucije'], ['P / Esc', 'pavza'], ['M', 'utišaj zvok'],
+  ['A / D ali ← / →', 'premikanje'], ['Preslednica / W', 'skok (drži za višji skok)'], ['J', 'napad'],
+  ['K / Shift', 'sunek (če si ga odklenil)'], ['L', 'strupeni izstrelek (če si ga odklenil)'], ['E / Q / R', 'aktivne sposobnosti po vrstnem redu odklepanja'],
+  ['1 / 2 / 3 ali klik', 'izbira izboljšave'], ['P / Esc', 'premor'], ['M', 'vklop / izklop zvoka'],
 ];
 function drawPanel(title, sub, lines) {
   ui.fillStyle = 'rgba(6,8,18,.78)'; ui.fillRect(0, 0, W, H);
@@ -553,15 +553,15 @@ function drawPanel(title, sub, lines) {
   lines.forEach((l, i) => { ui.fillStyle = l.color || '#aab'; ui.fillText(l.text, W / 2, 396 + i * 22); });
 }
 function drawMenu() {
-  const rec = best.room ? [{ text: `Rekord: stopnja ${best.room} · poraženi šefi: ${best.bosses}`, color: '#9be15d' }, { text: best.build ? 'Najboljša linija – ' + best.build : '', color: '#7f8aa8' }] : [{ text: 'Še nimaš rekorda – srečno!', color: '#9be15d' }];
+  const rec = best.room ? [{ text: `Rekord: stopnja ${best.room} · premagani šefi: ${best.bosses}`, color: '#9be15d' }, { text: best.build ? 'Najuspešnejši razvoj: ' + best.build : '', color: '#7f8aa8' }] : [{ text: 'Rekorda še nimaš. Srečno!', color: '#9be15d' }];
   const pulse = 0.6 + 0.4 * Math.sin(time * 4);
-  drawPanel('EVO PLATFORMER', 'Teci, skači, bojuj se in se razvijaj po evolucijskem ključu.',
-    [{ text: 'Vsaka stopnja = 1 evolucija (3 ponudbe). Vsak 5. nivo je šef. Ob smrti se vse začne znova.', color: '#c8d0e8' }, ...rec,
-      { text: 'Pritisni ENTER, preslednico ali klikni za začetek', color: `rgba(255,255,255,${pulse})` }]);
+  drawPanel('EVO PLATFORMER', 'Teči, skači, bojuj se in razvijaj svoje bitje.',
+    [{ text: 'Po vsaki stopnji izberi eno od treh izboljšav. Na vsaki peti stopnji te čaka šef. Ob porazu se tek začne znova.', color: '#c8d0e8' }, ...rec,
+      { text: 'Za začetek pritisni ENTER ali preslednico oziroma klikni.', color: `rgba(255,255,255,${pulse})` }]);
 }
 function drawPause() {
-  drawPanel('PAVZA', `Stopnja ${room} · najboljši rekord: stopnja ${best.room}`,
-    [{ text: 'P / Esc ali klik – nadaljuj', color: '#fff' }, { text: 'Backspace – nazaj v meni (izgubiš trenutni tek)', color: '#ff9a6a' }]);
+  drawPanel('PREMOR', `Stopnja ${room} · rekord: stopnja ${best.room}`,
+    [{ text: 'Za nadaljevanje pritisni P / Esc ali klikni.', color: '#fff' }, { text: 'Backspace – vrnitev v meni (trenutni tek bo izgubljen)', color: '#ff9a6a' }]);
 }
 function updateMenu() {
   if (mode === 'menu' && hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
@@ -575,8 +575,8 @@ function endRoom(boss) {
   player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
   Snd.play('clear'); Snd.music(boss ? 'boss' : 'game', room);
-  if (saveBest(room) && room > 1) toast('Nov rekord: stopnja ' + room + '!', 2.5);
-  queue = boss ? ['evo', 'evo', 'boss'] : ['evo', 'evo'];
+  if (saveBest(room) && room > 1) toast('Nov rekord: ' + room + '. stopnja!', 2.5);
+  queue = boss ? ['boss'] : ['evo'];
   picksTotal = queue.length; picksDone = 0;
   nextChoice();
 }
@@ -735,7 +735,7 @@ function wrap(text, maxW) {
 function drawHUD() {
   ui.textAlign = 'right'; ui.font = '13px monospace'; ui.fillStyle = '#9be15d';
   ui.fillText(`Rekord: stopnja ${best.room}`, W - 16, 24);
-  ui.fillStyle = '#7f8aa8'; ui.fillText('P – pavza · M – zvok', W - 16, 42);
+  ui.fillStyle = '#7f8aa8'; ui.fillText('P – premor · M – zvok', W - 16, 42);
   ui.textAlign = 'left';
   const hpN = Math.ceil(stats.maxHp), rows = Math.ceil(hpN / 10), off = (rows - 1) * 19;
   for (let i = 0; i < hpN; i++) {
@@ -769,9 +769,9 @@ function drawChoose() {
   const boss = choice.kind === 'boss';
   ui.textAlign = 'center'; ui.font = 'bold 26px monospace';
   ui.fillStyle = boss ? '#ffd54f' : '#fff';
-  ui.fillText(boss ? 'NAGRADA ŠEFA – izberi eno' : `Stopnja ${room} končana – izbira ${picksDone + 1}/${picksTotal}`, W / 2, 44);
+  ui.fillText(boss ? 'NAGRADA ZA PORAZ ŠEFA – izberi eno' : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`, W / 2, 44);
   ui.font = '13px monospace'; ui.fillStyle = '#aab';
-  ui.fillText(boss ? 'Edinstvena lastnost, ki jo dobiš samo od šefa.' : 'Vsaka izbira zapre sosednje veje ključa. Roza kartica = sinergija med tvojimi lastnostmi.', W / 2, 66);
+  ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.' : 'Izbira lastnosti zapre sorodno vejo. Rožnata kartica je sinergija dveh že izbranih lastnosti.', W / 2, 66);
   ui.textAlign = 'left'; ui.font = '12px monospace';
   const inv = nicheInvest(owned);
   Object.keys(inv).forEach((k, i) => {
@@ -790,13 +790,13 @@ function drawChoose() {
     ui.fillStyle = col; ui.fillRect(r.x, r.y, r.w, 26);
     ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace';
     const generic = t.id.startsWith('g_');
-    ui.fillText(t.syn ? '★ SINERGIJA' : `${NICHES[t.niche].name.toUpperCase()} · ${generic ? 'splošno' : t.boss ? 'šef' : 'stopnja ' + traitTier(t)}`, r.x + 8, r.y + 17);
+    ui.fillText(t.syn ? '★ SINERGIJA' : `${NICHES[t.niche].name.toUpperCase()} · ${generic ? 'splošna' : t.boss ? 'šefovska' : 'raven ' + traitTier(t)}`, r.x + 8, r.y + 17);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
     ui.fillStyle = '#fff'; ui.font = 'bold 19px monospace'; ui.fillText(t.name, r.x + 10, r.y + 52);
     ui.font = '13px monospace'; ui.fillStyle = '#dde';
     if (t.syn) {
       ui.fillStyle = col; ui.font = 'bold 12px monospace';
-      wrap('Iz: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 72 + k * 15));
+      wrap('Povezuje: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 72 + k * 15));
       ui.fillStyle = '#fff'; ui.font = '13px monospace'; ui.fillText('Učinek:', r.x + 10, r.y + 108);
       ui.fillStyle = '#dde'; wrap(t.desc, r.w - 20).slice(0, 3).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 124 + k * 16));
       return;
@@ -808,8 +808,8 @@ function drawChoose() {
     const hs = generic || t.boss ? [] : hintsSyn(t, owned);
     const opens = generic || t.boss ? [] : opensWhat(t), closes = generic ? [] : closesWhat(t, owned);
     ui.fillStyle = '#9fd3ff';
-    wrap(opens.length ? '▶ Odpre: ' + opens.join(', ') : generic || t.boss ? '' : '▶ Konec veje', r.w - 20).slice(0, 2).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
-    if (hs.length) { ui.fillStyle = NICHES.syn.color; wrap('★ Odpre sinergijo: ' + hs.join(', '), r.w - 20).slice(0, 1).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; }); }
+    wrap(opens.length ? '▶ Odkleni: ' + opens.join(', ') : generic || t.boss ? '' : '▶ Konec razvojne veje', r.w - 20).slice(0, 2).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
+    if (hs.length) { ui.fillStyle = NICHES.syn.color; wrap('★ Omogoči sinergijo: ' + hs.join(', '), r.w - 20).slice(0, 1).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; }); }
     ui.fillStyle = '#ff9a6a';
     wrap(closes.length ? '✖ Zapre: ' + closes.join(', ') : '', r.w - 20).slice(0, 3).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
   });
