@@ -7,6 +7,10 @@ const NICHES = {
   bulwark: { name: 'Trdnjava', color: '#7cc242' },
   venom: { name: 'Strupar', color: '#b455d6' },
   fire: { name: 'Ogenj', color: '#ff8a2a' },
+  water: { name: 'Voda', color: '#3b6bff' },
+  land: { name: 'Kopno', color: '#18b86a' },
+  air: { name: 'Zrak', color: '#d9e2ff' },
+  syn: { name: 'Sinergija', color: '#ff7ad9' },
   boss: { name: 'Tiran', color: '#ffd54f' },
 };
 const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR'];
@@ -74,6 +78,36 @@ T('molten', 'Staljena koža', 'fire', 'ember', '+2 zdravja, napadalci zagorijo',
 T('inferno', 'Pekel', 'fire', 'breath', 'ogenj dosti močnejši in daljši', s => { s.burn += 1.5; s.burnDur += 2; s.breathCd = 0.65; });
 T('cinder', 'Žarečica', 'fire', 'scorch', 'goreči sovražniki ob smrti eksplodirajo', s => { s.cinder = true; });
 T('magma', 'Magma', 'fire', 'molten', '+4 zdravja, počasno celjenje', s => { s.maxHp += 4; s.regen += 0.2; });
+// --- Voda (led je globoko v veji) ---
+T('gel', 'Sluzava koža', 'water', null, 'gladka sluz: +2 zdravja, +20 hitrosti', s => { s.maxHp += 2; s.speed += 20; });
+T('fins', 'Plavuti', 'water', 'gel', 'sunek naprej (K / Shift), +30 hitrosti', s => { s.dash = true; s.speed += 30; });
+T('tentacle', 'Lovke', 'water', 'gel', 'daljši doseg, +0,5 poškodbe', s => { s.reach += 18; s.dmg += 0.5; });
+T('frost', 'Ledeni dotik', 'water', 'fins', 'udarci upočasnijo sovražnike', s => { s.chill = true; });
+T('torrent', 'Hudournik', 'water', 'fins', 'AKTIVNO: vodni val odnese sovražnike pred teboj', s => {}, { active: { cd: 7, name: 'Val', color: '#3b9bff' } });
+T('iceshell', 'Ledeni oklep', 'water', 'tentacle', '+4 zdravja, napadalci se upočasnijo', s => { s.maxHp += 4; s.thornChill = true; });
+T('blizzard', 'Snežni vihar', 'water', 'frost', 'AKTIVNO: zamrzne sovražnike v okolici', s => {}, { active: { cd: 11, name: 'Vihar', color: '#bfeaff' } });
+T('permafrost', 'Večni led', 'water', 'frost', 'upočasnjeni sovražniki prejmejo +50 % poškodbe', s => { s.shatter = true; });
+T('leviathan', 'Levijatan', 'water', 'torrent', 'večji, +3 zdravja, +1 poškodba', s => { s.maxHp += 3; s.dmg += 1; }, { scale: 1.15 });
+// --- Kopno (rastline) ---
+T('roots', 'Korenine', 'land', null, '+3 zdravja, počasno celjenje', s => { s.maxHp += 3; s.regen += 0.1; });
+T('vines', 'Ovijalke', 'land', 'roots', 'daljši doseg, +0,5 poškodbe', s => { s.reach += 22; s.dmg += 0.5; });
+T('bloom', 'Cvet', 'land', 'roots', 'hitrejše celjenje', s => { s.regen += 0.3; });
+T('thornvine', 'Trnasti bršljan', 'land', 'vines', 'napadalci se poškodujejo', s => { s.thorns += 2; });
+T('snare', 'Past iz korenin', 'land', 'vines', 'AKTIVNO: korenine ujamejo bližnje sovražnike', s => {}, { active: { cd: 9, name: 'Past', color: '#4fae3f' } });
+T('spores', 'Spore', 'land', 'bloom', 'sovražniki v bližini se upočasnijo', s => { s.sporeAura = true; });
+T('canopy', 'Krošnja', 'land', 'bloom', '+4 zdravja, hitrejše celjenje', s => { s.maxHp += 4; s.regen += 0.2; });
+T('treant', 'Drevesnik', 'land', 'thornvine', 'večji, +3 zdravja, +1 poškodba, bodice', s => { s.maxHp += 3; s.dmg += 1; s.thorns += 2; }, { scale: 1.2 });
+T('bloomburst', 'Cvetni izbruh', 'land', 'spores', 'AKTIVNO: ozdravi 2 zdravja in upočasni sovražnike', s => {}, { active: { cd: 12, name: 'Izbruh', color: '#ff7ab8' } });
+// --- Zrak (elektrika) ---
+T('feathers', 'Perje', 'air', null, 'dodaten skok v zraku, +20 hitrosti', s => { s.airJumps += 1; s.speed += 20; });
+T('static', 'Statični naboj', 'air', 'feathers', 'udarec preskoči na bližnjega sovražnika', s => { s.arc = 1; });
+T('thermals', 'Termika', 'air', 'feathers', 'drsenje v zraku (drži skok)', s => { s.glide = true; s.glideFall = 90; }, { excludes: ['carapace'] });
+T('conduct', 'Prevodnik', 'air', 'static', 'strela preskoči na še več sovražnikov', s => { s.arc += 2; });
+T('bolt', 'Strela', 'air', 'static', 'AKTIVNO: strele udarijo 3 sovražnike', s => {}, { active: { cd: 8, name: 'Strela', color: '#fff35a' } });
+T('gust', 'Sunek vetra', 'air', 'thermals', 'hiter sunek (K / Shift), hitra obnova', s => { s.dash = true; s.dashCd = Math.min(s.dashCd, 0.5); });
+T('stormcloud', 'Nevihtni oblak', 'air', 'thermals', 'pristanek sproži udar, +1 skok', s => { s.stomp = true; s.airJumps += 1; });
+T('tempest', 'Orkan', 'air', 'bolt', 'strela udari 5 sovražnikov', s => { s.boltN = 5; });
+T('thunderlord', 'Gromovnik', 'air', 'conduct', '+1 poškodba, hitrejši napadi, močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { scale: 1.1 });
 // --- Nagrade za šefa (ena na šefa) ---
 T('bossheart', 'Tiranovo srce', 'boss', null, '+4 zdravja, +1 poškodba', s => { s.maxHp += 4; s.dmg += 1; }, { boss: true });
 T('cracker', 'Lomilec školjk', 'boss', null, 'ignoriraš oklep spredaj', s => { s.pierce = true; }, { boss: true });
@@ -98,18 +132,36 @@ const SYNERGIES = [
   { need: ['fangs', 'ember'], name: 'Kisli ogenj', desc: '+0,5 ognja in strupa', apply: s => { s.burn += 0.5; s.poison += 0.5; } },
   { need: ['dash', 'scorch'], name: 'Ognjeni sunek', desc: 'sunek +1 poškodba', apply: s => { s.dashDmg += 1; } },
   { need: ['gale', 'claws'], name: 'Vihar kremljev', desc: 'hitrejši napadi', apply: s => { s.atkCd *= 0.9; } },
+  { need: ['frost', 'ember'], name: 'Para', desc: '+0,5 poškodbe, +15 dosega', apply: s => { s.dmg += 0.5; s.reach += 15; } },
+  { need: ['static', 'fangs'], name: 'Električni strup', desc: 'strela +1 poškodba', apply: s => { s.arcDmg += 1; } },
+  { need: ['vines', 'fangs'], name: 'Strupeni bršljan', desc: 'trni zastrupijo, +0,5 strupa', apply: s => { s.thornPoison = true; s.poison += 0.5; } },
+  { need: ['fins', 'legs'], name: 'Dvoživka', desc: '+40 hitrosti, +30 skoka', apply: s => { s.speed += 40; s.jump += 30; } },
+  { need: ['bloom', 'fat'], name: 'Bogata zaloga', desc: 'celjenje +0,4', apply: s => { s.regen += 0.4; } },
+  { need: ['thermals', 'ember'], name: 'Vroči zrak', desc: '+1 skok v zraku', apply: s => { s.airJumps += 1; } },
+  { need: ['iceshell', 'spikes'], name: 'Ledene bodice', desc: 'bodice +2, upočasnijo', apply: s => { s.thorns += 2; s.thornChill = true; } },
+  { need: ['bolt', 'torrent'], name: 'Nevihta', desc: 'aktivne moči 15 % hitrejše', apply: s => { s.cdMult *= 0.85; } },
+  { need: ['canopy', 'shell'], name: 'Živi ščit', desc: 'ščit, +2 zdravja', apply: s => { s.shield = true; s.maxHp += 2; } },
+  { need: ['permafrost', 'claws'], name: 'Ledeni kremplji', desc: '+1 poškodba', apply: s => { s.dmg += 1; } },
 ];
+SYNERGIES.forEach(y => { y.id = 'syn_' + y.need.join('_'); y.niche = 'syn'; y.syn = true; });
+const SYN_BY_ID = {};
+SYNERGIES.forEach(y => { SYN_BY_ID[y.id] = y; });
+function synSources(y) { return y.need.map(n => TRAIT_BY_ID[n].name); }
+function synAvailable(owned) { return SYNERGIES.filter(y => !owned.has(y.id) && y.need.every(n => owned.has(n))); }
+// lastnosti, ki bi s to izbiro odprle novo sinergijo
+function hintsSyn(t, owned) { return SYNERGIES.filter(y => !owned.has(y.id) && y.need.includes(t.id) && y.need.every(n => n === t.id || owned.has(n))).map(y => y.name); }
 
 function computeStats(owned, extras) {
   const s = { maxHp: 5, speed: 230, jump: 520, airJumps: 0, dmg: 1, reach: 34, atkCd: 0.38, knock: 180,
     dash: false, dashCd: 0.7, glide: false, glideFall: 120, ram: false, lifesteal: 0, thorns: 0, regen: 0, dashDmg: 0,
     poison: 0, poisonDur: 0, spit: false, spitCd: 0.8, spread: false, pierce: false, spin: false, stomp: false,
     shield: false, revive: false, invTime: 1, ambush: false, slow: false, aura: false, thornPoison: false,
+    cdMult: 1, chill: false, shatter: false, thornChill: false, sporeAura: false, arc: 0, arcDmg: 1, boltN: 3,
     burn: 0, burnDur: 0, fireAura: false, thornFire: false, cinder: false, breathCd: 5, scale: 1 };
   for (const t of TRAITS) if (owned.has(t.id)) { t.apply(s); if (t.scale) s.scale = Math.max(s.scale, t.scale); }
   s.actives = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).slice(0, 3);
   if (extras) for (const g of GENERIC) for (let i = 0; i < (extras[g.id] || 0); i++) g.apply(s);
-  s.synergies = SYNERGIES.filter(y => y.need.every(n => owned.has(n)));
+  s.synergies = SYNERGIES.filter(y => owned.has(y.id));
   s.synergies.forEach(y => y.apply(s));
   return s;
 }
@@ -123,7 +175,7 @@ function traitState(t, owned) {
   return 'open';
 }
 function nicheInvest(owned) {
-  const c = { predator: 0, swift: 0, bulwark: 0, venom: 0, fire: 0 };
+  const c = { predator: 0, swift: 0, bulwark: 0, venom: 0, fire: 0, water: 0, land: 0, air: 0 };
   for (const t of TRAITS) if (owned.has(t.id) && c[t.niche] !== undefined) c[t.niche] += traitTier(t);
   return c;
 }
@@ -133,9 +185,11 @@ function offers(owned, n = 3) {
   const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
   const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open').map(t => ({ t, w: 1 + 2.5 * inv[t.niche] }));
   const out = [];
+  const syn = synAvailable(owned);
+  if (syn.length && n >= 3) out.push(syn[Math.floor(Math.random() * syn.length)]);
   // ena ponudba je vedno iz niše, v katero še nisi vložil (če je kakšna odprta)
   const fresh = pool.filter(x => inv[x.t.niche] === 0);
-  if (owned.size > 0 && fresh.length && n >= 3) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
+  if (owned.size > 0 && fresh.length && n >= 3 && out.length < n - 1) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
   while (out.length < n && pool.length) {
     let r = Math.random() * pool.reduce((a, b) => a + b.w, 0), i = 0;
     while (i < pool.length - 1 && (r -= pool[i].w) > 0) i++;
@@ -156,7 +210,7 @@ function closesWhat(t, owned) {
 }
 function lineage(owned) {
   const out = [];
-  for (const k of ['predator', 'swift', 'bulwark', 'venom', 'fire']) {
+  for (const k of ['predator', 'swift', 'bulwark', 'venom', 'fire', 'water', 'land', 'air']) {
     const list = TRAITS.filter(t => t.niche === k && owned.has(t.id)).sort((a, b) => traitTier(a) - traitTier(b));
     if (list.length) out.push({ niche: k, text: list.map(t => t.name).join(' › ') });
   }
