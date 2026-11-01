@@ -178,6 +178,8 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 // ---------- Stanje igre ----------
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
 let run = { revived: false, bosses: 0 }, points = 0;
+let difficulty = 'hard';
+try { difficulty = localStorage.getItem('evo-difficulty') === 'easy' ? 'easy' : 'hard'; } catch (e) { /* privzeto težja težavnost */ }
 let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null;
 const showcase = () => mode === 'choose' || mode === 'menu';
 // Rekord se shrani v brskalnik (localStorage).
@@ -191,11 +193,71 @@ function saveBest(done) {
   return rec;
 }
 let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [], choiceCool = 0, mouse = { x: -1, y: -1 };
+let synergyCards = [], treeScroll = 0, pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
+const SAVE_KEY = 'evo-save-v1';
 
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
     jumps: 0, atkT: 0, atkCd: 0, spitCd: 0, dashT: 0, dashCd: 0, inv: 0, hurtT: 0, shield: stats.shield,
     atkHit: new Set(), dashHit: new Set(), phase: 0, acd: {}, haste: 0, bastion: 0, meteor: false, meteorUp: 0, breathT: 0 };
+}
+let saveNotice = '';
+function savedGameExists() {
+  try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
+}
+function saveGame() {
+  if (!player || mode !== 'pause') return;
+  const plain = (obj, omit) => Object.fromEntries(Object.entries(obj).filter(([k]) => !omit.includes(k)));
+  const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
+    dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
+  const data = {
+    room, difficulty, owned: [...owned], extras, run,
+    player: savedPlayer,
+    platforms,
+    enemies: enemies.map(e => plain(e, ['rig'])),
+    shots: shots.map(b => plain(b, ['obj'])),
+    pshots: pshots.map(b => plain(b, ['obj'])),
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    saveNotice = 'Igra je shranjena.';
+  } catch (e) {
+    saveNotice = 'Shranjevanje ni uspelo. Preveri prostor v brskalniku.';
+  }
+}
+function loadSavedGame() {
+  let data;
+  try {
+    data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!data || !Number.isInteger(data.room) || !Array.isArray(data.owned) || !data.player || !Array.isArray(data.platforms) || !Array.isArray(data.enemies)) {
+      saveNotice = 'Shranjena igra manjka ali je poškodovana.';
+      return false;
+    }
+    clearObjects();
+    owned = new Set(data.owned);
+    extras = Object.assign({ g_hp: 0, g_dmg: 0, g_spd: 0 }, data.extras);
+    stats = computeStats(owned, extras);
+    run = Object.assign({ revived: false, bosses: 0 }, data.run);
+    room = data.room;
+    difficulty = data.difficulty === 'easy' ? 'easy' : 'hard';
+    platforms = data.platforms;
+    enemies = data.enemies;
+    player = Object.assign(newPlayer(), data.player, {
+      atkHit: new Set((data.player.atkHit || []).map(i => enemies[i]).filter(Boolean)),
+      dashHit: new Set((data.player.dashHit || []).map(i => enemies[i]).filter(Boolean)),
+    });
+    shots = Array.isArray(data.shots) ? data.shots : [];
+    pshots = Array.isArray(data.pshots) ? data.pshots : [];
+    mode = 'play';
+    buildRoomScene();
+    setPlayerModel(owned);
+    Snd.music(room % 5 === 0 ? 'boss' : 'game', room);
+    saveNotice = '';
+    return true;
+  } catch (e) {
+    saveNotice = 'Shranjene igre ni bilo mogoče naložiti.';
+    return false;
+  }
 }
 function spawnEnemy(kind, x, y) {
   const sz = { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
@@ -536,39 +598,208 @@ function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
   run.revived = false; run.bosses = 0; room = 0; player = null; choice = null;
 }
-function beginGame() { resetRun(); startRoom(); Snd.play('clear'); }
+function beginGame() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nov tek se kljub temu začne */ }
+  resetRun(); startRoom(); Snd.play('clear');
+}
 function toMenu() { resetRun(); startRoom(); clearObjects(); mode = 'menu'; Snd.music('menu'); }
-const CONTROLS = [
-  ['A / D ali ← / →', 'premikanje'], ['Preslednica / W', 'skok (drži za višji skok)'], ['J', 'napad'],
-  ['K / Shift', 'sunek (če si ga odklenil)'], ['L', 'strupeni izstrelek (če si ga odklenil)'], ['E / Q / R', 'aktivne sposobnosti po vrstnem redu odklepanja'],
-  ['1 / 2 / 3 ali klik', 'izbira izboljšave'], ['P / Esc', 'premor'], ['M', 'vklop / izklop zvoka'],
-];
-function drawPanel(title, sub, lines) {
-  ui.fillStyle = 'rgba(6,8,18,.78)'; ui.fillRect(0, 0, W, H);
-  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 44px monospace'; ui.fillText(title, W / 2, 84);
-  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(sub, W / 2, 112);
-  ui.textAlign = 'left'; ui.font = '14px monospace';
-  CONTROLS.forEach((c, i) => { ui.fillStyle = '#ffd54f'; ui.fillText(c[0], 200, 160 + i * 24); ui.fillStyle = '#e8ecff'; ui.fillText(c[1], 400, 160 + i * 24); });
-  ui.textAlign = 'center'; ui.font = '14px monospace';
-  lines.forEach((l, i) => { ui.fillStyle = l.color || '#aab'; ui.fillText(l.text, W / 2, 396 + i * 22); });
+function setDifficulty(value) {
+  difficulty = value === 'easy' ? 'easy' : 'hard';
+  try { localStorage.setItem('evo-difficulty', difficulty); } catch (e) { /* izbor še vedno velja za ta tek */ }
 }
 function drawMenu() {
-  const rec = best.room ? [{ text: `Rekord: stopnja ${best.room} · premagani šefi: ${best.bosses}`, color: '#9be15d' }, { text: best.build ? 'Najuspešnejši razvoj: ' + best.build : '', color: '#7f8aa8' }] : [{ text: 'Rekorda še nimaš. Srečno!', color: '#9be15d' }];
-  const pulse = 0.6 + 0.4 * Math.sin(time * 4);
-  drawPanel('EVO PLATFORMER', 'Teči, skači, bojuj se in razvijaj svoje bitje.',
-    [{ text: 'Po vsaki stopnji izberi eno od treh izboljšav. Na vsaki peti stopnji te čaka šef. Ob porazu se tek začne znova.', color: '#c8d0e8' }, ...rec,
-      { text: 'Za začetek pritisni ENTER ali preslednico oziroma klikni.', color: `rgba(255,255,255,${pulse})` }]);
+  ui.fillStyle = 'rgba(6,8,18,.84)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 46px monospace'; ui.fillText('EVO PLATFORMER', W / 2, 78);
+  ui.fillStyle = '#dce3f7'; ui.font = '17px monospace'; ui.fillText('Bori se, razvijaj se in poišči svojo evolucijsko pot.', W / 2, 112);
+  ui.font = 'bold 18px monospace'; ui.fillStyle = '#fff'; ui.fillText('IZBERI TEŽAVNOST', W / 2, 165);
+  const cards = [
+    { x: 175, value: 'easy', title: 'LAŽJA', desc: ['Po vsaki stopnji izberi', 'dve izboljšavi.'], color: '#9be15d' },
+    { x: 505, value: 'hard', title: 'TEŽJA', desc: ['Po vsaki stopnji izberi', 'eno izboljšavo.'], color: '#ff9a6a' },
+  ];
+  cards.forEach(c => {
+    const active = difficulty === c.value;
+    ui.fillStyle = active ? '#252f3b' : '#171b2c'; ui.fillRect(c.x, 190, 280, 116);
+    ui.strokeStyle = active ? c.color : '#515a70'; ui.lineWidth = active ? 4 : 2; ui.strokeRect(c.x, 190, 280, 116);
+    ui.fillStyle = c.color; ui.font = 'bold 24px monospace'; ui.fillText(c.title, c.x + 140, 230);
+    ui.fillStyle = '#dce3f7'; ui.font = '15px monospace'; c.desc.forEach((line, i) => ui.fillText(line, c.x + 140, 260 + i * 22));
+  });
+  ui.fillStyle = '#aab'; ui.font = '14px monospace';
+  ui.fillText('Na vsaki peti stopnji te čaka šef; njegov poraz prinese še posebno nagrado.', W / 2, 335);
+  const pulse = 0.65 + 0.35 * Math.sin(time * 4);
+  ui.fillStyle = `rgba(255,255,255,${pulse})`; ui.font = 'bold 20px monospace'; ui.fillText('ENTER ali klik – začni igro', W / 2, 390);
+  if (savedGameExists()) {
+    ui.fillStyle = '#7fd8ff'; ui.font = 'bold 17px monospace'; ui.fillText('NADALJUJ SHRANJENO IGRO (C)', W / 2, 432);
+  }
+  if (saveNotice) {
+    ui.fillStyle = '#ff9a6a'; ui.font = '13px monospace'; ui.fillText(saveNotice, W / 2, 458);
+  }
+  if (best.room) {
+    ui.fillStyle = '#9be15d'; ui.font = '14px monospace';
+    ui.fillText(`Rekord: ${best.room}. stopnja · premagani šefi: ${best.bosses}`, W / 2, 485);
+  }
+  ui.fillStyle = '#aab'; ui.font = '13px monospace';
+  ui.fillText('1/2: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
+  ui.fillText('K/Shift: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
-  drawPanel('PREMOR', `Stopnja ${room} · rekord: stopnja ${best.room}`,
-    [{ text: 'Za nadaljevanje pritisni P / Esc ali klikni.', color: '#fff' }, { text: 'Backspace – vrnitev v meni (trenutni tek bo izgubljen)', color: '#ff9a6a' }]);
+  ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 40px monospace'; ui.fillText('PREMOR', W / 2, 68);
+  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(`Stopnja ${room} · težavnost: ${difficulty === 'easy' ? 'lažja' : 'težja'}`, W / 2, 96);
+  const buttons = [
+    { y: 108, label: 'NADALJUJ', color: '#9be15d' },
+    { y: 146, label: 'POGLEJ RAZVOJNO DREVO', color: '#7fd8ff' },
+    { y: 184, label: 'SHRANI IGRO', color: '#ffd54f' },
+    { y: 222, label: 'GLAVNI MENI', color: '#ff9a6a' },
+  ];
+  buttons.forEach((b, i) => {
+    ui.fillStyle = pauseHover === i ? '#30374a' : '#171b2c'; ui.fillRect(315, b.y, 330, 36);
+    ui.strokeStyle = b.color; ui.lineWidth = 2; ui.strokeRect(315, b.y, 330, 36);
+    ui.fillStyle = b.color; ui.font = 'bold 14px monospace'; ui.fillText(b.label, 480, b.y + 23);
+  });
+  ui.fillStyle = saveNotice ? '#9be15d' : '#aab'; ui.font = '13px monospace';
+  ui.fillText(saveNotice || 'Klikni možnost ali uporabi P / Esc za nadaljevanje.', W / 2, 271);
+  drawPauseSynergies();
+}
+function drawPauseSynergies() {
+  const all = stats.synergies;
+  ui.textAlign = 'center'; ui.font = 'bold 13px monospace'; ui.fillStyle = '#c8d0e8';
+  ui.fillText('AKTIVNE SINERGIJE — pomakni kazalec nad ikono za podrobnosti', W / 2, 294);
+  if (!all.length) {
+    ui.font = '13px monospace'; ui.fillStyle = '#8f9ab3'; ui.fillText('Sinergije se samodejno aktivirajo, ko pridobiš obe povezani lastnosti.', W / 2, 342);
+    return;
+  }
+  all.forEach((syn, i) => {
+    const col = i % 5, row = Math.floor(i / 5), x = 56 + col * 170, y = 316 + row * 37;
+    ui.fillStyle = pauseSynHover === i ? '#343b50' : '#171b2c'; ui.fillRect(x, y, 162, 31);
+    ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 1.5; ui.strokeRect(x, y, 162, 31);
+    ui.beginPath(); ui.arc(x + 16, y + 15.5, 10, 0, Math.PI * 2); ui.fillStyle = NICHES.syn.color; ui.fill();
+    ui.fillStyle = '#171b2c'; ui.font = 'bold 11px monospace'; ui.fillText('✦', x + 16, y + 19);
+    ui.textAlign = 'left'; ui.fillStyle = '#f2d9ed'; ui.font = '11px monospace';
+    ui.fillText(syn.name.length > 19 ? syn.name.slice(0, 17) + '…' : syn.name, x + 32, y + 19);
+    ui.textAlign = 'center';
+  });
+  if (pauseSynHover >= 0 && all[pauseSynHover]) {
+    const syn = all[pauseSynHover], tipW = 330, tipH = 104;
+    const x = clamp(mouse.x + 14, 8, W - tipW - 8), y = clamp(mouse.y + 14, 8, H - tipH - 8);
+    ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
+    ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
+    ui.textAlign = 'left'; ui.fillStyle = NICHES.syn.color; ui.font = 'bold 14px monospace'; ui.fillText(syn.name, x + 12, y + 22);
+    ui.fillStyle = '#fff'; ui.font = '12px monospace'; ui.fillText('Pogoja: ' + synSources(syn).join(' + '), x + 12, y + 47);
+    ui.fillStyle = '#dce3f7'; wrap('Učinek: ' + syn.desc, tipW - 24).slice(0, 2).forEach((line, i) => ui.fillText(line, x + 12, y + 69 + i * 16));
+    ui.textAlign = 'center';
+  }
+}
+function treeGroups() {
+  const keys = Object.keys(NICHES).filter(key => key !== 'syn');
+  return keys.map(key => {
+    const traits = TRAITS.filter(t => t.niche === key);
+    const tiers = [];
+    for (const t of traits) {
+      const tier = traitTier(t) - 1;
+      (tiers[tier] ||= []).push(t);
+    }
+    return { key, tiers, maxTier: tiers.length, height: 48 + Math.max(1, ...tiers.map(t => t.length)) * 27 };
+  });
+}
+function drawTree() {
+  ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
+  ui.fillStyle = '#c8d0e8'; ui.font = '13px monospace'; ui.fillText('Osvetljene lastnosti so odklenjene; med vejami izbereš le eno pot. Kolesce ali ↑ / ↓ za pomik.', W / 2, 63);
+  const groups = treeGroups(), rowHeights = [];
+  treeNodeBoxes = [];
+  for (let i = 0; i < groups.length; i += 3) rowHeights.push(Math.max(...groups.slice(i, i + 3).map(g => g.height)) + 12);
+  const contentH = 82 + rowHeights.reduce((sum, h) => sum + h, 0);
+  treeScroll = clamp(treeScroll, 0, Math.max(0, contentH - 470));
+  ui.save(); ui.beginPath(); ui.rect(0, 78, W, 410); ui.clip();
+  let rowY = 84 - treeScroll;
+  for (let row = 0; row * 3 < groups.length; row++) {
+    const batch = groups.slice(row * 3, row * 3 + 3);
+    batch.forEach((g, col) => {
+      const x = 12 + col * 316, width = 304, y = rowY;
+      ui.fillStyle = 'rgba(22,27,44,.88)'; ui.fillRect(x, y, width, g.height);
+      ui.strokeStyle = NICHES[g.key].color; ui.lineWidth = 1.5; ui.strokeRect(x, y, width, g.height);
+      ui.textAlign = 'left'; ui.fillStyle = NICHES[g.key].color; ui.font = 'bold 13px monospace'; ui.fillText(NICHES[g.key].name.toUpperCase(), x + 8, y + 17);
+      const nodeWidth = Math.min(74, 270 / Math.max(1, g.maxTier));
+      const tierStep = 280 / Math.max(1, g.maxTier);
+      const nodeX = tier => x + 8 + tier * tierStep;
+      const nodeY = (tier, index) => y + 37 + index * 27;
+      const positions = new Map();
+      g.tiers.forEach((nodes, tier) => nodes.forEach((trait, index) => positions.set(trait.id, { x: nodeX(tier), y: nodeY(tier, index) })));
+      for (const trait of TRAITS.filter(t => t.niche === g.key && t.parent && positions.has(t.parent))) {
+        const from = positions.get(trait.parent), to = positions.get(trait.id);
+        ui.beginPath(); ui.moveTo(from.x + 10, from.y + 7); ui.lineTo(to.x, to.y + 7);
+        ui.strokeStyle = owned.has(trait.parent) && owned.has(trait.id) ? '#9be15d' : '#626b82'; ui.lineWidth = 1; ui.stroke();
+      }
+      g.tiers.forEach(nodes => nodes.forEach(trait => {
+        const pos = positions.get(trait.id), unlocked = traitState(trait, owned) === 'open', acquired = owned.has(trait.id);
+        ui.fillStyle = acquired ? '#31533c' : unlocked ? '#29344b' : '#171b2a';
+        ui.fillRect(pos.x, pos.y, nodeWidth, 19);
+        ui.strokeStyle = acquired ? '#9be15d' : unlocked ? NICHES[g.key].color : '#41485a'; ui.lineWidth = 1; ui.strokeRect(pos.x, pos.y, nodeWidth, 19);
+        ui.fillStyle = acquired ? '#c8ffc0' : unlocked ? '#e5e9f4' : '#778096';
+        ui.font = '9px monospace'; ui.textAlign = 'left';
+        const labelLength = Math.max(4, Math.floor((nodeWidth - 6) / 5.5));
+        const label = trait.name.length > labelLength ? trait.name.slice(0, labelLength - 1) + '…' : trait.name;
+        ui.fillText(label, pos.x + 3, pos.y + 13);
+        treeNodeBoxes.push({ trait, x: pos.x, y: pos.y - treeScroll, w: nodeWidth, h: 19 });
+      }));
+    });
+    rowY += rowHeights[row];
+  }
+  ui.restore();
+  ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
+  ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
+  ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
+  if (treeHoverTrait) {
+    const tipW = 320, tipH = 112;
+    const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 78, H - tipH - 38);
+    ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
+    ui.strokeStyle = NICHES[treeHoverTrait.niche].color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
+    ui.textAlign = 'left'; ui.fillStyle = NICHES[treeHoverTrait.niche].color; ui.font = 'bold 14px monospace'; ui.fillText(treeHoverTrait.name, x + 12, y + 22);
+    ui.fillStyle = '#dce3f7'; ui.font = '12px monospace';
+    wrap(treeHoverTrait.desc, tipW - 24).slice(0, 3).forEach((line, i) => ui.fillText(line, x + 12, y + 47 + i * 16));
+    ui.textAlign = 'center';
+  }
+}
+function drawSynergyCard() {
+  const syn = synergyCards[synergyCardIndex];
+  if (!syn) return;
+  ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = NICHES.syn.color; ui.font = 'bold 17px monospace'; ui.fillText('SINERGIJA SAMODEJNO ODKLENJENA', W / 2, 145);
+  ui.fillStyle = '#171b2c'; ui.fillRect(190, 170, 580, 230);
+  ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 4; ui.strokeRect(190, 170, 580, 230);
+  ui.fillStyle = NICHES.syn.color; ui.font = 'bold 28px monospace'; ui.fillText('✦ ' + syn.name, W / 2, 225);
+  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText('Povezuje: ' + synSources(syn).join(' + '), W / 2, 275);
+  ui.fillStyle = '#fff'; ui.font = 'bold 16px monospace'; ui.fillText('Učinek', W / 2, 318);
+  ui.fillStyle = '#dce3f7'; wrap(syn.desc, 520).slice(0, 2).forEach((line, i) => ui.fillText(line, W / 2, 348 + i * 21));
+  ui.fillStyle = '#9be15d'; ui.font = '14px monospace';
+  ui.fillText(synergyCardIndex + 1 < synergyCards.length ? 'Pritisni Enter ali klikni za naslednjo sinergijo.' : 'Pritisni Enter ali klikni za nadaljevanje.', W / 2, 444);
 }
 function updateMenu() {
-  if (mode === 'menu' && hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
-  else if (mode === 'pause') {
-    if (hit('KeyP', 'Escape', 'Enter')) mode = 'play';
-    else if (hit('Backspace')) { saveBest(room - 1); toMenu(); }
+  if (mode === 'menu') {
+    if (hit('ArrowLeft', 'KeyA', 'ArrowRight', 'KeyD')) setDifficulty(difficulty === 'easy' ? 'hard' : 'easy');
+    if (hit('Digit1', 'Numpad1')) setDifficulty('easy');
+    if (hit('Digit2', 'Numpad2')) setDifficulty('hard');
+    if (hit('KeyC') && savedGameExists()) loadSavedGame();
+    if (hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
   }
+  else if (mode === 'pause') {
+    if (hit('KeyP', 'Escape', 'Enter')) resumeGame();
+    else if (hit('KeyT')) { mode = 'tree'; treeScroll = 0; }
+    else if (hit('KeyS')) saveGame();
+  } else if (mode === 'tree') {
+    if (hit('Escape', 'Backspace', 'KeyT')) mode = 'pause';
+    else if (hit('ArrowDown')) treeScroll += 55;
+    else if (hit('ArrowUp')) treeScroll = Math.max(0, treeScroll - 55);
+  } else if (mode === 'synergy') {
+    if (hit('Enter', 'Space', 'KeyJ')) advanceSynergyCard();
+  }
+}
+function resumeGame() { mode = 'play'; Snd.music(room % 5 === 0 ? 'boss' : 'game', room); }
+function pauseAction(index) {
+  if (index === 0) resumeGame();
+  else if (index === 1) { mode = 'tree'; treeScroll = 0; }
+  else if (index === 2) saveGame();
+  else if (index === 3) { saveBest(room - 1); toMenu(); }
 }
 function endRoom(boss) {
   mode = 'choose';
@@ -576,7 +807,7 @@ function endRoom(boss) {
   clearObjects();
   Snd.play('clear'); Snd.music(boss ? 'boss' : 'game', room);
   if (saveBest(room) && room > 1) toast('Nov rekord: ' + room + '. stopnja!', 2.5);
-  queue = boss ? ['boss'] : ['evo'];
+  queue = difficulty === 'easy' ? (boss ? ['evo', 'evo', 'boss'] : ['evo', 'evo']) : (boss ? ['evo', 'boss'] : ['evo']);
   picksTotal = queue.length; picksDone = 0;
   nextChoice();
 }
@@ -591,15 +822,30 @@ function nextChoice() {
   startRoom();
 }
 function pick(opt) {
+  const previousSynergies = new Set(stats.synergies.map(y => y.id));
   if (opt.id.startsWith('g_')) extras[opt.id]++; else owned.add(opt.id);
   const old = stats.maxHp;
   stats = computeStats(owned, extras);
+  const newlyUnlocked = stats.synergies.filter(y => !previousSynergies.has(y.id));
   player.hp = Math.min(stats.maxHp, player.hp + Math.max(0, stats.maxHp - old));
   player.shield = stats.shield;
   burst(player.x + 14, player.y + 18, NICHES[opt.niche].color, 30);
   shake = 4;
   Snd.play(opt.boss ? 'bossPick' : opt.syn ? 'syn' : 'pick');
   picksDone++;
+  if (newlyUnlocked.length) {
+    synergyCards = newlyUnlocked;
+    synergyCardIndex = 0;
+    mode = 'synergy';
+    Snd.play('syn');
+  } else nextChoice();
+}
+let synergyCardIndex = 0;
+function advanceSynergyCard() {
+  synergyCardIndex++;
+  if (synergyCardIndex < synergyCards.length) return;
+  synergyCards = [];
+  mode = 'choose';
   nextChoice();
 }
 function cardRect(i) { return { x: 30 + i * 305, y: i === choice.hover ? 346 : 356, w: 290, h: 176 }; }
@@ -611,16 +857,47 @@ function hoverIndex() {
 uic.addEventListener('mousemove', e => {
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
+  pauseHover = mode === 'pause' && mouse.x >= 315 && mouse.x <= 645
+    ? [108, 146, 184, 222].findIndex(y => mouse.y >= y && mouse.y <= y + 36) : -1;
+  pauseSynHover = -1;
+  if (mode === 'pause') stats.synergies.forEach((syn, i) => {
+    const x = 56 + (i % 5) * 170, y = 316 + Math.floor(i / 5) * 37;
+    if (mouse.x >= x && mouse.x <= x + 162 && mouse.y >= y && mouse.y <= y + 31) pauseSynHover = i;
+  });
+  treeHoverTrait = mode === 'tree'
+    ? (treeNodeBoxes.find(box => box.y >= 78 && box.y + box.h <= 488 && mouse.x >= box.x && mouse.x <= box.x + box.w && mouse.y >= box.y && mouse.y <= box.y + box.h) || {}).trait || null
+    : null;
 });
 uic.addEventListener('click', e => {
-  if (mode === 'menu') { beginGame(); return; }
-  if (mode === 'pause') { mode = 'play'; return; }
-  if (mode !== 'choose' || !choice || choiceCool > 0) return;
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
+  if (mode === 'menu') {
+    if (mouse.y >= 190 && mouse.y <= 306) {
+      if (mouse.x >= 175 && mouse.x <= 455) setDifficulty('easy');
+      else if (mouse.x >= 505 && mouse.x <= 785) setDifficulty('hard');
+    } else if (mouse.y >= 412 && mouse.y <= 454 && savedGameExists()) loadSavedGame();
+    else if (mouse.y >= 360 && mouse.y <= 407) beginGame();
+    return;
+  }
+  if (mode === 'pause') {
+    const index = [108, 146, 184, 222].findIndex(y => mouse.x >= 315 && mouse.x <= 645 && mouse.y >= y && mouse.y <= y + 36);
+    if (index >= 0) pauseAction(index);
+    return;
+  }
+  if (mode === 'tree') {
+    if (mouse.y >= 494 && mouse.x >= 386 && mouse.x <= 574) mode = 'pause';
+    return;
+  }
+  if (mode === 'synergy') { advanceSynergyCard(); return; }
+  if (mode !== 'choose' || !choice || choiceCool > 0) return;
   const i = hoverIndex();
   if (i >= 0) pick(choice.options[i]);
 });
+uic.addEventListener('wheel', e => {
+  if (mode !== 'tree') return;
+  e.preventDefault();
+  treeScroll = Math.max(0, treeScroll + Math.sign(e.deltaY) * 55);
+}, { passive: false });
 function updateChoose(dt) {
   choiceCool -= dt;
   if (!choice) return;
@@ -821,7 +1098,10 @@ function frame(now) {
   const rawDt = Math.min(0.033, (now - last) / 1000); last = now;
   const dt = rawDt * (hitstop > 0 ? 0.08 : 1);
   hitstop -= rawDt; time += rawDt; toastT -= rawDt;
-  if (mode === 'play') { if (hit('KeyP', 'Escape')) mode = 'pause'; else updatePlay(dt); }
+  if (mode === 'play') {
+    if (hit('KeyP', 'Escape')) { mode = 'pause'; saveNotice = ''; Snd.music('menu'); }
+    else updatePlay(dt);
+  }
   else if (mode === 'choose') updateChoose(rawDt); else updateMenu();
   for (const q of particles) { q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt; q.vy -= 20 * rawDt; q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt; }
   for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.t += rawDt; b.l.material.opacity = 1 - b.t / 0.22; if (b.t > 0.22) { scene.remove(b.l); b.l.geometry.dispose(); b.l.material.dispose(); bolts.splice(i, 1); } }
@@ -841,10 +1121,13 @@ function frame(now) {
   renderer.render(scene, camera);
   ui.clearRect(0, 0, W, H);
   if (player && mode !== 'menu') { drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
-  if (mode === 'menu') drawMenu(); else if (mode === 'pause') drawPause();
+  if (mode === 'menu') drawMenu();
+  else if (mode === 'pause') drawPause();
+  else if (mode === 'tree') drawTree();
+  else if (mode === 'synergy') drawSynergyCard();
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);
 }
 toMenu();
-addEventListener('blur', () => { if (mode === 'play') mode = 'pause'; });
+addEventListener('blur', () => { if (mode === 'play') { mode = 'pause'; saveNotice = ''; Snd.music('menu'); } });
 requestAnimationFrame(frame);

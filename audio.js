@@ -10,9 +10,9 @@ const Snd = (() => {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.7; master.connect(ctx.destination);
-    sfxBus = ctx.createGain(); sfxBus.gain.value = 0.55; sfxBus.connect(master);
-    musBus = ctx.createGain(); musBus.gain.value = 0.28; musBus.connect(master);
+    master = ctx.createGain(); master.gain.value = muted ? 0 : 0.75; master.connect(ctx.destination);
+    sfxBus = ctx.createGain(); sfxBus.gain.value = 0.68; sfxBus.connect(master);
+    musBus = ctx.createGain(); musBus.gain.value = 0.38; musBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -130,11 +130,11 @@ const Snd = (() => {
       } else {
         note(hz(r - 12), nextT, sp * 0.9, 'sawtooth', 0.2, musBus);
         if (s % 2 === 1) note(hz(r), nextT, sp * 0.6, 'sawtooth', 0.09, musBus);
-        if (s % 4 === 0) kick(nextT, 0.5);
-        if (s === 2 || s === 6) snare(nextT, 0.1);
-        if (s === 0) ch.forEach(n => note(hz(r + 12 + n + (bar === 3 ? 1 : 0)), nextT, sp * 1.2, 'square', 0.05, musBus));
-        if (s % 2 === 0 && Math.random() < 0.45) note(hz(r + 24 + R([0, 3, 6, 7, 10])), nextT, sp * 0.8, 'sawtooth', 0.04, musBus);
-        hat(nextT, 0.04);
+        if (s % 4 === 0) kick(nextT, 0.65);
+        if (s === 2 || s === 6) snare(nextT, 0.15);
+        if (s === 0) ch.forEach(n => note(hz(r + 12 + n + (bar === 3 ? 1 : 0)), nextT, sp * 1.2, 'square', 0.075, musBus));
+        if (s % 2 === 0 && Math.random() < 0.55) note(hz(r + 24 + R([0, 3, 6, 7, 10])), nextT, sp * 0.8, 'sawtooth', 0.06, musBus);
+        hat(nextT, 0.06);
       }
       nextT += sp; step++;
     }
@@ -159,13 +159,13 @@ const Snd = (() => {
     if (!ctx) return;
     startAmbient();
     const t = ctx.currentTime, play = cur !== 'menu';
-    windG.gain.setTargetAtTime(play ? (cur === 'boss' ? 0.05 : 0.08) : 0, t, 0.8);
-    droneG.gain.setTargetAtTime(cur === 'boss' ? 0.12 : 0, t, 0.8);
+    windG.gain.setTargetAtTime(play ? (cur === 'boss' ? 0.07 : 0.12) : 0, t, 0.8);
+    droneG.gain.setTargetAtTime(cur === 'boss' ? 0.16 : 0, t, 0.8);
     if (!play || muted || t < nextAmb) return;
     nextAmb = t + (cur === 'boss' ? 6 : 2 + Math.random() * 4);
-    if (cur === 'boss') { tone(70, 50, 1.2, 'sine', 0.12, 0, sfxBus); return; }
-    if (roomN % 2) { const f = 1800 + Math.random() * 1500; [0, 0.11, 0.22].slice(0, 1 + Math.floor(Math.random() * 3)).forEach(d => tone(f, f * 1.4, 0.08, 'sine', 0.07, d, sfxBus)); }
-    else for (let i = 0; i < 4; i++) tone(4300, 4300, 0.03, 'square', 0.015, i * 0.07, sfxBus);
+    if (cur === 'boss') { tone(70, 50, 1.2, 'sine', 0.16, 0, sfxBus); return; }
+    if (roomN % 2) { const f = 1800 + Math.random() * 1500; [0, 0.11, 0.22].slice(0, 1 + Math.floor(Math.random() * 3)).forEach(d => tone(f, f * 1.4, 0.08, 'sine', 0.09, d, sfxBus)); }
+    else for (let i = 0; i < 4; i++) tone(4300, 4300, 0.03, 'square', 0.025, i * 0.07, sfxBus);
   }
   setInterval(ambience, 400);
   let roomN = 1;
@@ -178,7 +178,7 @@ const Snd = (() => {
       else { cur = 'game'; key = k; }
       roomN = room || 1; step = Math.ceil(step / 32) * 32;
     },
-    toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.7; return muted; },
+    toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.75; return muted; },
     get muted() { return muted; },
     get state() { return ctx ? ctx.state + ':' + ctx.currentTime.toFixed(2) : 'none'; },
   };

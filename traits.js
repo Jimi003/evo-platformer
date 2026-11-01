@@ -144,10 +144,7 @@ const SYNERGIES = [
   { need: ['permafrost', 'claws'], name: 'Ledeni kremplji', desc: '+1 škode pri napadih', apply: s => { s.dmg += 1; } },
 ];
 SYNERGIES.forEach(y => { y.id = 'syn_' + y.need.join('_'); y.niche = 'syn'; y.syn = true; });
-const SYN_BY_ID = {};
-SYNERGIES.forEach(y => { SYN_BY_ID[y.id] = y; });
 function synSources(y) { return y.need.map(n => TRAIT_BY_ID[n].name); }
-function synAvailable(owned) { return SYNERGIES.filter(y => !owned.has(y.id) && y.need.every(n => owned.has(n))); }
 // Sinergije, ki se odklenejo z izbiro te lastnosti.
 function hintsSyn(t, owned) { return SYNERGIES.filter(y => !owned.has(y.id) && y.need.includes(t.id) && y.need.every(n => n === t.id || owned.has(n))).map(y => y.name); }
 
@@ -161,7 +158,7 @@ function computeStats(owned, extras) {
   for (const t of TRAITS) if (owned.has(t.id)) { t.apply(s); if (t.scale) s.scale = Math.max(s.scale, t.scale); }
   s.actives = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).slice(0, 3);
   if (extras) for (const g of GENERIC) for (let i = 0; i < (extras[g.id] || 0); i++) g.apply(s);
-  s.synergies = SYNERGIES.filter(y => owned.has(y.id));
+  s.synergies = SYNERGIES.filter(y => y.need.every(id => owned.has(id)));
   s.synergies.forEach(y => y.apply(s));
   return s;
 }
@@ -185,8 +182,6 @@ function offers(owned, n = 3) {
   const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
   const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open').map(t => ({ t, w: 1 + 2.5 * inv[t.niche] }));
   const out = [];
-  const syn = synAvailable(owned);
-  if (syn.length && n >= 3) out.push(syn[Math.floor(Math.random() * syn.length)]);
   // ena ponudba je vedno iz niše, v katero še nisi vložil (če je kakšna odprta)
   const fresh = pool.filter(x => inv[x.t.niche] === 0);
   if (owned.size > 0 && fresh.length && n >= 3 && out.length < n - 1) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
