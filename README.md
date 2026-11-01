@@ -12,6 +12,10 @@ python3 -m http.server 8123
 
 Igro odpri na `http://localhost:8123`.
 
+## Razvoj in zdravje
+
+Med izbiro izboljšave so prikazane trenutne statistike stvora. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+
 ## Objava na spletu
 
 Delovni tok GitHub Actions objavi igro na GitHub Pages ob vsaki spremembi veje `main`. Če GitHub Pages še ni nastavljen, v repozitoriju odpri **Settings → Pages** in pri **Build and deployment → Source** izberi **GitHub Actions**. Po uspešni objavi bo igra na naslovu `https://jimi003.github.io/evo-platformer/`.
