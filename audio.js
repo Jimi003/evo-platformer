@@ -141,7 +141,7 @@ const Snd = (() => {
   }
   setInterval(schedule, 100);
   // Ambient: veter (stalno) + ptiči/čriči ob naključnih trenutkih + globok drone pri šefu.
-  let wind = null, windG = null, drone = null, droneG = null, nextAmb = 0;
+  let wind = null, windG = null, drone = null, droneG = null, nextAmb = 0, nightFactor = 0;
   function startAmbient() {
     if (wind) return;
     wind = ctx.createBufferSource(); wind.buffer = noiseBuf; wind.loop = true;
@@ -164,19 +164,19 @@ const Snd = (() => {
     if (!play || muted || t < nextAmb) return;
     nextAmb = t + (cur === 'boss' ? 6 : 2 + Math.random() * 4);
     if (cur === 'boss') { tone(70, 50, 1.2, 'sine', 0.16, 0, sfxBus); return; }
-    if (roomN % 2) { const f = 1800 + Math.random() * 1500; [0, 0.11, 0.22].slice(0, 1 + Math.floor(Math.random() * 3)).forEach(d => tone(f, f * 1.4, 0.08, 'sine', 0.09, d, sfxBus)); }
-    else for (let i = 0; i < 4; i++) tone(4300, 4300, 0.03, 'square', 0.025, i * 0.07, sfxBus);
+    if (Math.random() < nightFactor) for (let i = 0; i < 4; i++) tone(4300, 4300, 0.03, 'square', 0.025, i * 0.07, sfxBus);
+    else { const f = 1800 + Math.random() * 1500; [0, 0.11, 0.22].slice(0, 1 + Math.floor(Math.random() * 3)).forEach(d => tone(f, f * 1.4, 0.08, 'sine', 0.09, d, sfxBus)); }
   }
   setInterval(ambience, 400);
-  let roomN = 1;
   return {
     init, play,
+    setDayNight(value) { nightFactor = Math.max(0, Math.min(1, value)); },
     music(mode, room) {
       const k = [0, 2, -2, 3, -4][((room || 1) - 1) % 5];
       if (mode === 'menu') { cur = 'menu'; key = 0; }
       else if (mode === 'boss') { cur = 'boss'; key = -2; }
       else { cur = 'game'; key = k; }
-      roomN = room || 1; step = Math.ceil(step / 32) * 32;
+      step = Math.ceil(step / 32) * 32;
     },
     toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.75; return muted; },
     get muted() { return muted; },
