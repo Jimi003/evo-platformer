@@ -23,7 +23,7 @@ function T(id, name, niche, parent, desc, apply, extra) {
 T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; });
 T('rending', 'Razdiralni kremplji', 'predator', 'claws', '+1 škode in daljši kremplji', s => { s.dmg += 1; s.reach += 12; });
 T('horns', 'Rogovi', 'predator', 'claws', 'močneje odbiješ sovražnike in povzročiš +0,5 škode', s => { s.knock += 120; s.dmg += 0.5; });
-T('frenzy', 'Bes', 'predator', 'rending', 'napadaš precej hitreje', s => { s.atkCd *= 0.6; }, { excludes: ['carapace'] });
+T('frenzy', 'Bes', 'predator', 'rending', 'napadaš hitreje', s => { s.atkCd *= 0.75; }, { excludes: ['carapace'] });
 T('cleave', 'Krožni zamah', 'predator', 'rending', 'zamahneš v obe smeri', s => { s.spin = true; s.reach += 6; });
 T('apex', 'Vrhunski plenilec', 'predator', 'frenzy', 'ko premagaš sovražnika, si povrneš zdravje', s => { s.lifesteal = 1; s.dmg += 1; });
 T('ram', 'Naskok', 'predator', 'horns', 'sunek poškoduje sovražnike', s => { s.dash = true; s.ram = true; });
@@ -67,8 +67,8 @@ T('meteor', 'Meteorski padec', 'swift', 'pounce', 'AKTIVNO: poletiš navzgor in 
 T('bastion', 'Bastion', 'bulwark', 'shell', 'AKTIVNO: za 2,5 sekunde postaneš neranljiv', s => {}, { active: { cd: 12, name: 'Bastion', color: '#9be15d' } });
 T('quills', 'Izstrelki iz bodic', 'bulwark', 'barbed', 'AKTIVNO: izstreliš bodice v vse smeri', s => { s.thorns += 1; }, { active: { cd: 6, name: 'Bodice', color: '#e8e0c0' } });
 T('colossus', 'Kolos', 'bulwark', 'bulk', 'postaneš večji; +3 zdravja, +1 škode in močnejši odriv', s => { s.maxHp += 3; s.dmg += 1; s.knock += 80; }, { scale: 1.12 });
-T('miasma', 'Strupena meglica', 'venom', 'cloud', 'AKTIVNO: sprožiš strupeno eksplozijo okoli sebe', s => {}, { active: { cd: 8, name: 'Meglica', color: '#c24ff0' } });
-T('epidemic', 'Epidemija', 'venom', 'plague', 'AKTIVNO: zastrupiš vse sovražnike v prostoru', s => {}, { active: { cd: 14, name: 'Epidemija', color: '#9be15d' } });
+T('miasma', 'Strupena meglica', 'venom', 'cloud', 'AKTIVNO: zastrupiš bližnje sovražnike', s => {}, { active: { cd: 10, name: 'Meglica', color: '#c24ff0' } });
+T('epidemic', 'Epidemija', 'venom', 'plague', 'AKTIVNO: za 4 sekunde zastrupiš vse sovražnike', s => {}, { active: { cd: 18, name: 'Epidemija', color: '#9be15d' } });
 T('neuro', 'Nevrotoksin', 'venom', 'slow', '+1 strup; zastrupljeni sovražniki se še počasneje premikajo', s => { s.poison += 1; });
 // --- Ogenj (nova niša) ---
 T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; });

@@ -179,7 +179,9 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
 let run = { revived: false, bosses: 0 }, points = 0;
 let difficulty = 'hard';
-try { difficulty = localStorage.getItem('evo-difficulty') === 'easy' ? 'easy' : 'hard'; } catch (e) { /* privzeto težja težavnost */ }
+function normalizeDifficulty(value) { return value === 'easy' || value === 'challenge' ? value : 'hard'; }
+function difficultyLabel() { return difficulty === 'easy' ? 'lažja' : difficulty === 'challenge' ? 'izzivna' : 'težja'; }
+try { difficulty = normalizeDifficulty(localStorage.getItem('evo-difficulty')); } catch (e) { /* privzeto težja težavnost */ }
 let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null;
 const showcase = () => mode === 'choose' || mode === 'menu';
 // Rekord se shrani v brskalnik (localStorage).
@@ -239,7 +241,7 @@ function loadSavedGame() {
     stats = computeStats(owned, extras);
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
     room = data.room;
-    difficulty = data.difficulty === 'easy' ? 'easy' : 'hard';
+    difficulty = normalizeDifficulty(data.difficulty);
     platforms = data.platforms;
     enemies = data.enemies;
     player = Object.assign(newPlayer(), data.player, {
@@ -261,7 +263,8 @@ function loadSavedGame() {
 }
 function spawnEnemy(kind, x, y) {
   const sz = { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
-  const hp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
+  const baseHp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
+  const hp = baseHp * (difficulty === 'challenge' ? 1.2 : 1);
   const e = { kind, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
     flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, chillT: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
   enemies.push(e);
@@ -382,11 +385,11 @@ function useActive(id, slot) {
     for (let i = 0; i < 12; i++) { const ang = i / 12 * Math.PI * 2; pshots.push({ x: cx, y: cy, vx: Math.cos(ang) * 480, vy: Math.sin(ang) * 480, dmg: 1.3, quill: true }); }
     ring(cx, cy, a.color, 70, 0.3);
   } else if (id === 'miasma') {
-    ring(cx, cy, a.color, 300, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
-    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 300) { e.poisT = Math.max(e.poisT, 5); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 2); e.hp -= 1; e.flash = 0.1; }
+    ring(cx, cy, a.color, 260, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
+    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.poisT = Math.max(e.poisT, 3); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 1.25); e.hp -= 0.5; e.flash = 0.1; }
   } else if (id === 'epidemic') {
-    ring(cx, cy, a.color, 700, 0.8); shake = 6;
-    for (const e of enemies) { e.poisT = 7; e.poisDps = Math.max(s.poison, 1) * 1.5; e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
+    ring(cx, cy, a.color, 520, 0.8); shake = 6;
+    for (const e of enemies) { e.poisT = 4; e.poisDps = Math.max(s.poison, 1); e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
   } else if (id === 'torrent') {
     shake = 4; ring(cx + p.face * 60, cy, a.color, 120, 0.4);
     for (let i = 0; i < 14; i++) burst(cx + p.face * (20 + i * 22), cy + rand(-20, 24), i % 2 ? '#3b9bff' : '#bfeaff', 2);
@@ -432,6 +435,7 @@ function hurtPlayer(from, dmg = 1) {
   if (p.inv > 0) return;
   if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('bastion'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
   Snd.play('hurt');
+  if (difficulty === 'challenge' && (from.kind || from.enemyShot)) dmg *= 1.2;
   p.hp -= dmg; p.inv = stats.invTime; p.hurtT = 0.2; hitstop = 0.06;
   p.vx = (p.x < from.x ? -1 : 1) * 260; p.vy = -260; shake = 6; burst(p.x + 14, p.y + 18, '#ffffff');
   if (p.hp <= 0) {
@@ -513,7 +517,7 @@ function updatePlay(dt) {
           if (e.shootT <= 0) {
             e.shootT = rage ? 1.6 : 2.6;
             const base = Math.atan2(p.y + p.h / 2 - e.y - 20, p.x + p.w / 2 - e.x - e.w / 2);
-            for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7 });
+            for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7, enemyShot: true });
           }
         }
       } else if (e.kind === 'spitter') {
@@ -523,7 +527,7 @@ function updatePlay(dt) {
         if (e.shootT <= 0 && d < 520) {
           e.shootT = 2.2;
           const ang = Math.atan2(p.y + p.h / 2 - e.y, p.x + p.w / 2 - e.x);
-          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6 });
+          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6, enemyShot: true });
         }
       } else {
         e.vx = e.dir * (e.kind === 'hopper' ? 90 : 70 + room * 4);
@@ -604,7 +608,7 @@ function beginGame() {
 }
 function toMenu() { resetRun(); startRoom(); clearObjects(); mode = 'menu'; Snd.music('menu'); }
 function setDifficulty(value) {
-  difficulty = value === 'easy' ? 'easy' : 'hard';
+  difficulty = normalizeDifficulty(value);
   try { localStorage.setItem('evo-difficulty', difficulty); } catch (e) { /* izbor še vedno velja za ta tek */ }
 }
 function drawMenu() {
@@ -613,15 +617,17 @@ function drawMenu() {
   ui.fillStyle = '#dce3f7'; ui.font = '17px monospace'; ui.fillText('Bori se, razvijaj se in poišči svojo evolucijsko pot.', W / 2, 112);
   ui.font = 'bold 18px monospace'; ui.fillStyle = '#fff'; ui.fillText('IZBERI TEŽAVNOST', W / 2, 165);
   const cards = [
-    { x: 175, value: 'easy', title: 'LAŽJA', desc: ['Po vsaki stopnji izberi', 'dve izboljšavi.'], color: '#9be15d' },
-    { x: 505, value: 'hard', title: 'TEŽJA', desc: ['Po vsaki stopnji izberi', 'eno izboljšavo.'], color: '#ff9a6a' },
+    { x: 55, value: 'easy', title: 'LAŽJA', desc: ['Po vsaki stopnji izberi', 'dve izboljšavi.'], color: '#9be15d' },
+    { x: 350, value: 'hard', title: 'TEŽJA', desc: ['Po vsaki stopnji izberi', 'eno izboljšavo.'], color: '#ff9a6a' },
+    { x: 645, value: 'challenge', title: 'IZZIVNA', desc: ['Ena izboljšava na stopnjo;', 'sovražniki: +20 % zdravja', 'in povzročene škode.'], color: '#ff5d73' },
   ];
   cards.forEach(c => {
     const active = difficulty === c.value;
-    ui.fillStyle = active ? '#252f3b' : '#171b2c'; ui.fillRect(c.x, 190, 280, 116);
-    ui.strokeStyle = active ? c.color : '#515a70'; ui.lineWidth = active ? 4 : 2; ui.strokeRect(c.x, 190, 280, 116);
-    ui.fillStyle = c.color; ui.font = 'bold 24px monospace'; ui.fillText(c.title, c.x + 140, 230);
-    ui.fillStyle = '#dce3f7'; ui.font = '15px monospace'; c.desc.forEach((line, i) => ui.fillText(line, c.x + 140, 260 + i * 22));
+    ui.fillStyle = active ? '#252f3b' : '#171b2c'; ui.fillRect(c.x, 190, 260, 116);
+    ui.strokeStyle = active ? c.color : '#515a70'; ui.lineWidth = active ? 4 : 2; ui.strokeRect(c.x, 190, 260, 116);
+    ui.fillStyle = c.color; ui.font = 'bold 21px monospace'; ui.fillText(c.title, c.x + 130, 230);
+    ui.fillStyle = '#dce3f7'; ui.font = c.value === 'challenge' ? '13px monospace' : '15px monospace';
+    c.desc.forEach((line, i) => ui.fillText(line, c.x + 130, 258 + i * (c.value === 'challenge' ? 18 : 22)));
   });
   ui.fillStyle = '#aab'; ui.font = '14px monospace';
   ui.fillText('Na vsaki peti stopnji te čaka šef; njegov poraz prinese še posebno nagrado.', W / 2, 335);
@@ -638,13 +644,13 @@ function drawMenu() {
     ui.fillText(`Rekord: ${best.room}. stopnja · premagani šefi: ${best.bosses}`, W / 2, 485);
   }
   ui.fillStyle = '#aab'; ui.font = '13px monospace';
-  ui.fillText('1/2: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
+  ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
   ui.fillText('K/Shift: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 40px monospace'; ui.fillText('PREMOR', W / 2, 68);
-  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(`Stopnja ${room} · težavnost: ${difficulty === 'easy' ? 'lažja' : 'težja'}`, W / 2, 96);
+  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(`Stopnja ${room} · težavnost: ${difficultyLabel()}`, W / 2, 96);
   const buttons = [
     { y: 108, label: 'NADALJUJ', color: '#9be15d' },
     { y: 146, label: 'POGLEJ RAZVOJNO DREVO', color: '#7fd8ff' },
@@ -776,9 +782,11 @@ function drawSynergyCard() {
 }
 function updateMenu() {
   if (mode === 'menu') {
-    if (hit('ArrowLeft', 'KeyA', 'ArrowRight', 'KeyD')) setDifficulty(difficulty === 'easy' ? 'hard' : 'easy');
+    if (hit('ArrowLeft', 'KeyA')) setDifficulty(difficulty === 'challenge' ? 'hard' : difficulty === 'hard' ? 'easy' : 'challenge');
+    if (hit('ArrowRight', 'KeyD')) setDifficulty(difficulty === 'easy' ? 'hard' : difficulty === 'hard' ? 'challenge' : 'easy');
     if (hit('Digit1', 'Numpad1')) setDifficulty('easy');
     if (hit('Digit2', 'Numpad2')) setDifficulty('hard');
+    if (hit('Digit3', 'Numpad3')) setDifficulty('challenge');
     if (hit('KeyC') && savedGameExists()) loadSavedGame();
     if (hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
   }
@@ -873,8 +881,9 @@ uic.addEventListener('click', e => {
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
   if (mode === 'menu') {
     if (mouse.y >= 190 && mouse.y <= 306) {
-      if (mouse.x >= 175 && mouse.x <= 455) setDifficulty('easy');
-      else if (mouse.x >= 505 && mouse.x <= 785) setDifficulty('hard');
+      if (mouse.x >= 55 && mouse.x <= 315) setDifficulty('easy');
+      else if (mouse.x >= 350 && mouse.x <= 610) setDifficulty('hard');
+      else if (mouse.x >= 645 && mouse.x <= 905) setDifficulty('challenge');
     } else if (mouse.y >= 412 && mouse.y <= 454 && savedGameExists()) loadSavedGame();
     else if (mouse.y >= 360 && mouse.y <= 407) beginGame();
     return;
