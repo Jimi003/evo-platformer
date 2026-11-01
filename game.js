@@ -3,6 +3,9 @@ const W = 960, WORLD_W = 1440, H = 540, G = 1500, RW = 1280, RH = 720;
 const wx = x => x / 40, wy = y => (540 - y) / 40;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const DAYLIGHT_SECONDS = 90, DUSK_DAWN_SECONDS = 30;
+const DAY_CYCLE_SECONDS = (DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS) * 2;
+let dayNightLevel = 0, dayNightUpdateTimer = 0, dayNightRig = null;
 
 // ---------- Renderer, luči, kamera ----------
 const glc = document.getElementById('gl'), uic = document.getElementById('ui');
@@ -17,7 +20,8 @@ ui.setTransform(RW / W, 0, 0, RH / H, 0, 0);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, RW / RH, 0.1, 160);
-scene.add(new THREE.HemisphereLight('#c8d4ff', '#4a3a5a', 0.6));
+const hemi = new THREE.HemisphereLight('#c8d4ff', '#4a3a5a', 0.6);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff0d8', 0.8);
 sun.position.set(-4, 18, 14);
 sun.target.position.set(12, 4, 0);
@@ -43,11 +47,58 @@ function skyTexture(a, b) {
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
   gr.addColorStop(0, a); gr.addColorStop(1, b);
   g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  texture.userData.skyContext = g;
+  return texture;
+}
+function updateDayNight(dt = 0, force = false) {
+  dayNightUpdateTimer += dt;
+  if (!force && dayNightUpdateTimer < 0.1) return;
+  dayNightUpdateTimer = 0;
+  if (!skyTex) return;
+  const cyclePosition = dayCycleTime % DAY_CYCLE_SECONDS;
+  const nightStart = DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS;
+  const dawnStart = nightStart + DAYLIGHT_SECONDS;
+  let night = 0, twilight = 0;
+  if (cyclePosition >= DAYLIGHT_SECONDS && cyclePosition < nightStart) {
+    const transition = (cyclePosition - DAYLIGHT_SECONDS) / DUSK_DAWN_SECONDS;
+    night = transition; twilight = Math.sin(Math.PI * transition);
+  } else if (cyclePosition >= nightStart && cyclePosition < dawnStart) night = 1;
+  else if (cyclePosition >= dawnStart) {
+    const transition = (cyclePosition - dawnStart) / DUSK_DAWN_SECONDS;
+    night = 1 - transition; twilight = Math.sin(Math.PI * transition);
+  }
+  const phase = cyclePosition / DAY_CYCLE_SECONDS * Math.PI * 2;
+  dayNightLevel = night;
+  const th = THEMES[(room - 1 + THEMES.length) % THEMES.length];
+  const top = new THREE.Color(th.sky[0]).lerp(new THREE.Color('#070b20'), night * 0.88).lerp(new THREE.Color('#c76c73'), twilight * 0.28);
+  const bottom = new THREE.Color(th.sky[1]).lerp(new THREE.Color('#151b39'), night * 0.82).lerp(new THREE.Color('#e58b68'), twilight * 0.25);
+  const ctx = skyTex.userData.skyContext, gradient = ctx.createLinearGradient(0, 0, 0, 256);
+  gradient.addColorStop(0, top.getStyle()); gradient.addColorStop(1, bottom.getStyle());
+  ctx.fillStyle = gradient; ctx.fillRect(0, 0, 2, 256); skyTex.needsUpdate = true;
+  const fogColor = new THREE.Color(th.fog).lerp(new THREE.Color('#10162d'), night * 0.72).lerp(new THREE.Color('#a65a68'), twilight * 0.22);
+  scene.fog.color.copy(fogColor);
+  hemi.color.set('#c8d4ff').lerp(new THREE.Color('#7186bd'), night * 0.45);
+  hemi.groundColor.set('#4a3a5a').lerp(new THREE.Color('#171b32'), night * 0.4);
+  hemi.intensity = 0.6 - night * 0.2;
+  sun.color.set('#fff0d8').lerp(new THREE.Color('#a5b8ee'), night * 0.7);
+  sun.intensity = 0.8 - night * 0.32;
+  sun.position.x = -4 + Math.sin(phase) * 3;
+  sun.position.y = 18 - night * 4;
+  rim.intensity = 0.55 + night * 0.15;
+  if (dayNightRig) {
+    dayNightRig.celestial.opacity = night;
+    dayNightRig.stars.opacity = night;
+    dayNightRig.halo.opacity = 0.12 * night;
+    dayNightRig.shafts.opacity = 0.035 * (1 - night);
+    dayNightRig.fireflies.opacity = 0.22 + night * 0.58;
+  }
+  Snd.setDayNight(night);
 }
 function buildRoomScene() {
   if (roomGroup) { scene.remove(roomGroup); roomMats.forEach(m => m.dispose()); if (skyTex) skyTex.dispose(); }
   fruitRig = null;
+  dayNightRig = null;
   roomMats = []; fireflies = [];
   const th = THEMES[(room - 1) % THEMES.length];
   const M = (c, o) => { const m = stdMat(c, o); roomMats.push(m); return m; };
@@ -56,7 +107,9 @@ function buildRoomScene() {
   scene.fog = new THREE.Fog(th.fog, 30, 85);
   const groundM = M(th.ground), topM = M(th.top), rockM = M(th.ground), farM = M(th.far), treeM = M(th.tree), trunkM = M('#3a2a2a');
   const rockMat = M('#8a8a96'), rockMat2 = M('#6e6e7a');
-  const glowM = glowMat(th.glow, 0.9); roomMats.push(glowM);
+  const fireflyM = glowMat(th.glow, 0.9), celestialM = glowMat(th.glow, 0.9);
+  fireflyM.transparent = true; celestialM.transparent = true; celestialM.opacity = 0;
+  roomMats.push(fireflyM, celestialM);
   const crystalM = glowMat(th.glow, 0.7); roomMats.push(crystalM);
 
   platforms.forEach((p, i) => {
@@ -102,10 +155,8 @@ function buildRoomScene() {
     const cx = rand(-10, WORLD_W / 40 + 10), cy = rand(9, 17), cz = rand(-60, -30);
     for (let k = 0; k < 4; k++) mk(roomGroup, GEO.sph, cloudM, [cx + k * 2.2 - 3, cy + (k % 2) * 0.7, cz], [rand(2.5, 4), rand(1.2, 1.8), 1.5]).castShadow = false;
   }
-  if (th.stars) {
-    const starM = new THREE.MeshBasicMaterial({ color: '#ffffff' }); roomMats.push(starM);
-    for (let i = 0; i < 70; i++) mk(roomGroup, GEO.sph, starM, [rand(-20, 45), rand(8, 28), -80], [0.09, 0.09, 0.09]).castShadow = false;
-  }
+  const starM = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false }); roomMats.push(starM);
+  for (let i = 0; i < 70; i++) mk(roomGroup, GEO.sph, starM, [rand(-20, 45), rand(8, 28), -80], [0.09, 0.09, 0.09]).castShadow = false;
   const t2M = M(th.tree2), flowerM = glowMat(th.accent, 0.6); roomMats.push(flowerM);
   for (let i = 0; i < 34; i++) {
     const x = rand(-8, WORLD_W / 40 + 8), z = rand(-24, -6.5), s = rand(0.8, 1.7), by = 1.0, alt = Math.random() < 0.3;
@@ -131,7 +182,7 @@ function buildRoomScene() {
     const x = rand(-6, WORLD_W / 40 + 6), z = rand(-9, -5.2);
     mk(roomGroup, GEO.sph, i % 3 ? flowerM : t2M, [x, 1.05, z], [0.14, 0.1, 0.14]).castShadow = false;
   }
-  const moon = mk(roomGroup, GEO.sph, glowM, [WORLD_W / 80 + 4, 15, -70], [4, 4, 4]); moon.castShadow = false;
+  const moon = mk(roomGroup, GEO.sph, celestialM, [WORLD_W / 80 + 4, 15, -70], [4, 4, 4]); moon.castShadow = false;
   const haloM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.12, depthWrite: false }); roomMats.push(haloM);
   mk(roomGroup, GEO.sph, haloM, [WORLD_W / 80 + 4, 15, -70.5], [9, 9, 1]).castShadow = false;
   const shaftM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide }); roomMats.push(shaftM);
@@ -143,11 +194,13 @@ function buildRoomScene() {
     mk(roomGroup, GEO.sph, capM, [x, 1 + h, z], [h * 0.6, h * 0.35, h * 0.6]).castShadow = false;
   }
   for (let i = 0; i < 34; i++) {
-    const f = mk(roomGroup, GEO.sph, glowM, [rand(-2, WORLD_W / 40 + 2), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
+    const f = mk(roomGroup, GEO.sph, fireflyM, [rand(-2, WORLD_W / 40 + 2), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
     f.castShadow = false; f.userData = { bx: f.position.x, by: f.position.y, ph: rand(0, 6) };
     fireflies.push(f);
   }
   if (fruitTree) addFruitTreeToRoom();
+  dayNightRig = { celestial: celestialM, stars: starM, halo: haloM, shafts: shaftM, fireflies: fireflyM };
+  updateDayNight(0, true);
 }
 function addFruitTreeToRoom() {
   const treeM = stdMat('#76502d'), leafM = stdMat('#4f9b4e'), fruitM = glowMat('#ff6d36', 0.8), flowerM = stdMat('#ffd36a');
@@ -204,7 +257,7 @@ let difficulty = 'hard';
 function normalizeDifficulty(value) { return value === 'easy' || value === 'challenge' ? value : 'hard'; }
 function difficultyLabel() { return difficulty === 'easy' ? 'lažja' : difficulty === 'challenge' ? 'izzivna' : 'težja'; }
 try { difficulty = normalizeDifficulty(localStorage.getItem('evo-difficulty')); } catch (e) { /* privzeto težja težavnost */ }
-let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null;
+let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null, dayCycleTime = 0;
 let fruitPending = false, fruitTree = null;
 const showcase = () => mode === 'choose' || mode === 'menu';
 // Rekord se shrani v brskalnik (localStorage).
@@ -236,7 +289,7 @@ function saveGame() {
   const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
-    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree,
+    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree, dayCycleTime,
     player: savedPlayer,
     platforms,
     enemies: enemies.map(e => plain(e, ['rig'])),
@@ -264,6 +317,7 @@ function loadSavedGame() {
     stats = computeStats(owned, extras);
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
     room = data.room;
+    dayCycleTime = Number.isFinite(data.dayCycleTime) ? Math.max(0, data.dayCycleTime) % DAY_CYCLE_SECONDS : 0;
     difficulty = normalizeDifficulty(data.difficulty);
     fruitPending = data.fruitPending === true;
     fruitTree = data.fruitTree && Number.isFinite(data.fruitTree.x) && Number.isFinite(data.fruitTree.y)
@@ -459,7 +513,7 @@ function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
   toast(`Tek se je končal na stopnji ${room}. Rekord: ${best.room}. stopnja.`, 3); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  run.revived = false; run.bosses = 0; room = 0; player = null;
+  run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0;
   startRoom();
 }
 function hurtPlayer(from, dmg = 1) {
@@ -678,7 +732,7 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  run.revived = false; run.bosses = 0; room = 0; player = null; choice = null; fruitPending = false; fruitTree = null;
+  run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; choice = null; fruitPending = false; fruitTree = null;
 }
 function beginGame() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nov tek se kljub temu začne */ }
@@ -1119,6 +1173,8 @@ function drawHUD() {
   ui.textAlign = 'right'; ui.font = '13px monospace'; ui.fillStyle = '#9be15d';
   ui.fillText(`Rekord: stopnja ${best.room}`, W - 16, 24);
   ui.fillStyle = '#7f8aa8'; ui.fillText('P – premor · M – zvok', W - 16, 42);
+  ui.fillStyle = dayNightLevel > 0.5 ? '#b9c9ff' : '#ffe08a';
+  ui.fillText(dayNightLevel > 0.5 ? 'NOČ' : 'DAN', W - 16, 60);
   ui.textAlign = 'left';
   const hpN = Math.ceil(stats.maxHp), rows = Math.ceil(hpN / 10), off = (rows - 1) * 19;
   for (let i = 0; i < hpN; i++) {
@@ -1222,6 +1278,8 @@ function frame(now) {
   const dt = rawDt * (hitstop > 0 ? 0.08 : 1);
   hitstop -= rawDt; time += rawDt; toastT -= rawDt;
   if (mode === 'play') {
+    dayCycleTime = (dayCycleTime + rawDt) % DAY_CYCLE_SECONDS;
+    updateDayNight(rawDt);
     if (hit('KeyP', 'Escape')) { mode = 'pause'; saveNotice = ''; Snd.music('menu'); }
     else updatePlay(dt);
   }
