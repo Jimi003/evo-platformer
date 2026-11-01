@@ -14,13 +14,15 @@ Igro odpri na `http://localhost:8123`.
 
 ## Razvoj in zdravje
 
-Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. Barva posamezne izboljšave še vedno označuje njeno nišo. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš v drevesu razvoja. Omejitve so prikazane posebej, zato izbira ene lastnosti ne zapre več samodejno vseh sorodnih vej.
+Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. V premoru odpri radialno drevo: začetna sluz je v sredini, veje vodijo do nadaljnjih prilagoditev, barva vozlišča označuje njegovo nišo. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš ob pomiku kazalca nad vozlišče. Omejitve so prikazane posebej, zato izbira ene lastnosti ne zapre več samodejno vseh sorodnih vej.
 
 Med izbiro izboljšave so prikazane trenutne statistike stvora. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
 
 ## Dnevno-nočni cikel
 
-Med igranjem se v štirih minutah izmenjajo dan, mrak, noč in zora: dan in noč trajata po 90 sekund, mrak in zora pa po 30 sekund. Spreminjajo se nebo, osvetlitev, zvezde in kresničke, ambient pa podnevi poudari ptičje petje, ponoči pa čričke. Cikel se med premorom ustavi in shrani z igro; za zdaj ne spreminja sovražnikov, škode ali nagrad.
+Med igranjem se v štirih minutah izmenjajo dan, mrak, noč in zora: dan in noč trajata po 90 sekund, mrak in zora pa po 30 sekund. Sonce in luna potujeta čez nebo; lunine mene se ponovijo na vsakih osem dnevno-nočnih ciklov. Oblaki mehčajo dnevno svetlobo, noč brez mesečine pa je posebej temna. Spreminjajo se nebo, osvetlitev, zvezde in kresničke, ambient pa podnevi poudari ptičje petje, ponoči pa čričke. Cikla se med premorom ustavita in shranita z igro; ne spreminjata sovražnikov, škode ali nagrad.
+
+Nekateri nivoji imajo reko in slap v ozadju; več vodnih prilagoditev poveča možnost mokrega nivoja. Ob zaključku stopnje z največ petino zdravja se v naslednjem nivoju pojavi cvetoče drevo. Cvet se približno minuto razvija, odvrže cvetne liste, nato sadež zraste, pade in postane užiten.
 
 ## Objava na spletu
 
