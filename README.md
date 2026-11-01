@@ -14,6 +14,8 @@ Igro odpri na `http://localhost:8123`.
 
 ## Razvoj in zdravje
 
+Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. Barva posamezne izboljšave še vedno označuje njeno nišo. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš v drevesu razvoja. Omejitve so prikazane posebej, zato izbira ene lastnosti ne zapre več samodejno vseh sorodnih vej.
+
 Med izbiro izboljšave so prikazane trenutne statistike stvora. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
 
 ## Objava na spletu

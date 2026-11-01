@@ -1,6 +1,11 @@
 'use strict';
-// Evolucijski dihotomni ključ: vsaka lastnost ima starša; izbira ene veje zapre sosednjo vejo (brata).
-// Na koncu stopnje igralec dobi 3 ponudbe iz "meje" ključa, uteženo proti niši, v kateri je že najbolj razvit.
+// Niše ohranijo tematske barve; razvoj poteka po štirih prepletenih dimenzijah.
+const DIMENSIONS = {
+  body: { name: 'Telesni načrt', short: 'Telo', color: '#ffb86b' },
+  movement: { name: 'Gibanje in habitat', short: 'Gibanje', color: '#37b6f0' },
+  offense: { name: 'Bojni slog', short: 'Boj', color: '#e0453f' },
+  survival: { name: 'Preživetje', short: 'Preživetje', color: '#7cc242' },
+};
 const NICHES = {
   predator: { name: 'Plenilec', color: '#e0453f' },
   swift: { name: 'Hitrost', color: '#37b6f0' },
@@ -17,7 +22,9 @@ const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR'];
 const ACTIVE_KEY_LABELS = ['E', 'Q', 'R'];
 const TRAITS = [];
 function T(id, name, niche, parent, desc, apply, extra) {
-  TRAITS.push(Object.assign({ id, name, niche, parent, desc, apply }, extra || {}));
+  const trait = Object.assign({ id, name, niche, parent, desc, apply }, extra || {});
+  trait.requires = trait.requires || (parent ? [parent] : []);
+  TRAITS.push(trait);
 }
 // --- Plenilec ---
 T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'] });
@@ -36,9 +43,9 @@ T('tail', 'Rep za ravnotežje', 'swift', 'legs', 'nekoliko hitreje tečeš in vi
 T('dash', 'Hiter sunek', 'swift', 'hops', 'sunkovito se poženeš naprej (K / Shift)', s => { s.dash = true; });
 T('wings', 'Kožnata krila', 'swift', 'hops', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; }, { excludes: ['carapace', 'gel'] });
 T('phase', 'Senčni sunek', 'swift', 'dash', 'sunek se hitreje znova napolni', s => { s.dashCd = 0.35; });
-T('flyer', 'Letalec', 'swift', 'wings', 'dobiš dodaten skok v zraku in počasneje padaš', s => { s.airJumps += 1; s.glideFall = 60; });
+T('flyer', 'Letalec', 'swift', 'wings', 'dobiš dodaten skok v zraku in počasneje padaš', s => { s.airJumps += 1; s.glideFall = 60; }, { requires: ['wings', 'feathers'] });
 T('sprint', 'Šprint', 'swift', 'tail', 'tečeš precej hitreje', s => { s.speed += 70; });
-T('pounce', 'Udar ob pristanku', 'swift', 'tail', 'pristanek po padcu poškoduje bližnje sovražnike', s => { s.stomp = true; });
+T('pounce', 'Udar ob pristanku', 'swift', 'tail', 'pristanek po padcu poškoduje bližnje sovražnike', s => { s.stomp = true; }, { requires: ['tail', 'hops'] });
 // --- Vzdržljivost ---
 T('hide', 'Debela koža', 'bulwark', null, '+3 zdravja', s => { s.maxHp += 3; });
 T('carapace', 'Oklep', 'bulwark', 'hide', '+5 zdravja, vendar tečeš počasneje; ni združljiv z letom', s => { s.maxHp += 5; s.speed -= 30; }, { excludes: ['frenzy', 'wings', 'thermals', 'flyer'] });
@@ -86,7 +93,7 @@ T('frost', 'Ledeni dotik', 'water', 'fins', 'tvoji napadi upočasnijo sovražnik
 T('torrent', 'Hudournik', 'water', 'fins', 'AKTIVNO: pošlješ vodni val, ki odbije sovražnike pred teboj', s => {}, { active: { cd: 7, name: 'Vodni val', color: '#3b9bff' } });
 T('iceshell', 'Ledeni oklep', 'water', 'tentacle', '+4 zdravja; sovražniki, ki se te dotaknejo, se upočasnijo', s => { s.maxHp += 4; s.thornChill = true; });
 T('blizzard', 'Snežni vihar', 'water', 'frost', 'AKTIVNO: zamrzneš bližnje sovražnike', s => {}, { active: { cd: 11, name: 'Snežni vihar', color: '#bfeaff' } });
-T('permafrost', 'Večni led', 'water', 'frost', 'ohlajeni sovražniki prejmejo 50 % več škode', s => { s.shatter = true; });
+T('permafrost', 'Večni led', 'water', 'frost', 'ohlajeni sovražniki prejmejo 50 % več škode', s => { s.shatter = true; }, { requires: ['frost', 'iceshell'] });
 T('leviathan', 'Levijatan', 'water', 'torrent', 'postaneš večji; +3 zdravja in +1 škode', s => { s.maxHp += 3; s.dmg += 1; }, { scale: 1.15 });
 // --- Rastline ---
 T('roots', 'Korenine', 'land', null, '+3 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 3; s.regen += 0.1; });
@@ -107,12 +114,32 @@ T('bolt', 'Strela', 'air', 'static', 'AKTIVNO: strela udari do 3 sovražnike', s
 T('gust', 'Sunek vetra', 'air', 'thermals', 'odkleneš hiter sunek (K / Shift), ki se hitreje obnovi', s => { s.dash = true; s.dashCd = Math.min(s.dashCd, 0.5); });
 T('stormcloud', 'Nevihtni oblak', 'air', 'thermals', 'ob pristanku udariš ob tla in dobiš dodaten skok', s => { s.stomp = true; s.airJumps += 1; });
 T('tempest', 'Vihar', 'air', 'bolt', 'strela lahko zadene do 5 sovražnikov', s => { s.boltN = 5; });
-T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši napadi in močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { scale: 1.1 });
+T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši napadi in močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { requires: ['conduct', 'thermals'], scale: 1.1 });
 // --- Nagrade za šefa (ena na šefa) ---
 T('bossheart', 'Tiranovo srce', 'boss', null, '+5 zdravja in +1 škode', s => { s.maxHp += 5; s.dmg += 1; }, { boss: true });
 T('cracker', 'Lomilec oklepa', 'boss', null, 'prebiješ sovražnikov oklep in povzročiš +0,5 škode', s => { s.pierce = true; s.dmg += 0.5; }, { boss: true });
 T('alpha', 'Alfa naskok', 'boss', null, 'tečeš in napadaš hitreje; odkleneš močnejši sunek', s => { s.atkCd *= 0.75; s.speed += 40; s.dash = true; s.dashDmg += 1; }, { boss: true });
 
+const TRAIT_DIMENSIONS = {
+  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'fins', 'tentacle', 'roots', 'vines', 'feathers'],
+  movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'gust', 'stormcloud', 'gale', 'alpha'],
+  offense: ['rending', 'frenzy', 'cleave', 'apex', 'ram', 'breaker', 'gore', 'spit', 'plague', 'ambush', 'roar', 'trample',
+    'meteor', 'quills', 'miasma', 'epidemic', 'neuro', 'ember', 'breath', 'scorch', 'inferno', 'cinder', 'frost', 'torrent',
+    'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker'],
+  survival: ['carapace', 'fat', 'spikes', 'shell', 'barbed', 'regen', 'bulk', 'undying', 'camo', 'cloud', 'slow', 'titan',
+    'bastion', 'colossus', 'molten', 'magma', 'iceshell', 'leviathan', 'bloom', 'thornvine', 'spores', 'canopy', 'treant', 'bossheart'],
+};
+const TRAIT_DIMENSION = {};
+for (const [dimension, ids] of Object.entries(TRAIT_DIMENSIONS)) {
+  for (const id of ids) {
+    if (TRAIT_DIMENSION[id]) throw new Error(`Trait ${id} has more than one progression dimension.`);
+    TRAIT_DIMENSION[id] = dimension;
+  }
+}
+for (const t of TRAITS) {
+  t.dimension = TRAIT_DIMENSION[t.id];
+  if (!t.dimension) throw new Error(`Trait ${t.id} has no progression dimension.`);
+}
 const GENERIC = [
   { id: 'g_hp', name: 'Prilagoditev: vzdržljivost', niche: 'bulwark', desc: '+2 zdravja', apply: s => { s.maxHp += 2; } },
   { id: 'g_dmg', name: 'Prilagoditev: močnejši napad', niche: 'predator', desc: '+0,5 škode', apply: s => { s.dmg += 0.5; } },
@@ -120,6 +147,7 @@ const GENERIC = [
 ];
 const TRAIT_BY_ID = {};
 TRAITS.forEach(t => { TRAIT_BY_ID[t.id] = t; });
+function traitRequires(t) { return t.requires || (t.parent ? [t.parent] : []); }
 
 const SYNERGIES = [
   { need: ['claws', 'dash'], name: 'Krempljasti sunek', desc: 'sunek povzroči +2 škode', apply: s => { s.dashDmg += 2; } },
@@ -162,13 +190,19 @@ function computeStats(owned, extras) {
   s.synergies.forEach(y => y.apply(s));
   return s;
 }
-function traitTier(t) { let n = 1; while (t.parent) { t = TRAIT_BY_ID[t.parent]; n++; } return n; }
+function traitTier(t, memo = {}) {
+  if (!t) return 1;
+  if (memo[t.id]) return memo[t.id];
+  memo[t.id] = 1;
+  const requires = traitRequires(t);
+  if (requires.length) memo[t.id] = 1 + Math.max(...requires.map(id => traitTier(TRAIT_BY_ID[id], memo)));
+  return memo[t.id];
+}
 function traitState(t, owned) {
   if (owned.has(t.id)) return 'owned';
-  if (t.parent && !owned.has(t.parent)) return 'locked';
+  if (!traitRequires(t).every(id => owned.has(id))) return 'locked';
   for (const o of owned) { const ot = TRAIT_BY_ID[o]; if (ot && (ot.excludes || []).includes(t.id)) return 'blocked'; }
   if ((t.excludes || []).some(e => owned.has(e))) return 'blocked';
-  if (t.parent && TRAITS.some(x => x.parent === t.parent && x.id !== t.id && owned.has(x.id))) return 'blocked';
   return 'open';
 }
 function nicheInvest(owned) {
@@ -176,14 +210,21 @@ function nicheInvest(owned) {
   for (const t of TRAITS) if (owned.has(t.id) && c[t.niche] !== undefined) c[t.niche] += traitTier(t);
   return c;
 }
-// Tri ponudbe iz meje ključa; niše, v katere si že vložil, imajo večjo težo.
+function dimensionInvest(owned) {
+  const c = Object.fromEntries(Object.keys(DIMENSIONS).map(key => [key, 0]));
+  for (const t of TRAITS) if (owned.has(t.id)) c[t.dimension]++;
+  return c;
+}
+// Ponudbe ohranijo težo izbranih niš, vendar odpirajo tudi manj razvite dimenzije.
 function offers(owned, n = 3) {
   const inv = nicheInvest(owned);
+  const dimInv = dimensionInvest(owned);
   const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
-  const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open').map(t => ({ t, w: 1 + 2.5 * inv[t.niche] }));
+  const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open')
+    .map(t => ({ t, w: (1 + 2.5 * inv[t.niche]) * (1 + 0.6 / (1 + dimInv[t.dimension])) }));
   const out = [];
-  // ena ponudba je vedno iz niše, v katero še nisi vložil (če je kakšna odprta)
-  const fresh = pool.filter(x => inv[x.t.niche] === 0);
+  const leastInvested = Math.min(...pool.map(x => dimInv[x.t.dimension]));
+  const fresh = pool.filter(x => dimInv[x.t.dimension] === leastInvested);
   if (owned.size > 0 && fresh.length && n >= 3 && out.length < n - 1) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
   while (out.length < n && pool.length) {
     let r = Math.random() * pool.reduce((a, b) => a + b.w, 0), i = 0;
@@ -194,14 +235,11 @@ function offers(owned, n = 3) {
   return out;
 }
 function bossOffers(owned) { return TRAITS.filter(t => t.boss && !owned.has(t.id)).slice(0, 3); }
-function opensWhat(t) { return TRAITS.filter(x => x.parent === t.id).map(x => x.name); }
+function opensWhat(t) { return TRAITS.filter(x => traitRequires(x).includes(t.id)).map(x => x.name); }
 function closesWhat(t, owned) {
-  const names = new Set();
-  TRAITS.forEach(x => {
-    if (x.id === t.id || owned.has(x.id)) return;
-    if ((t.parent && x.parent === t.parent) || (t.excludes || []).includes(x.id) || (x.excludes || []).includes(t.id)) names.add(x.name);
-  });
-  return [...names];
+  const next = new Set([...owned, t.id]);
+  return TRAITS.filter(x => !owned.has(x.id) && x.id !== t.id
+    && traitState(x, owned) !== 'blocked' && traitState(x, next) === 'blocked').map(x => x.name);
 }
 function lineage(owned) {
   const out = [];
