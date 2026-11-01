@@ -777,73 +777,74 @@ function drawPauseSynergies() {
   }
 }
 function treeGroups() {
-  const keys = Object.keys(NICHES).filter(key => key !== 'syn');
-  return keys.map(key => {
-    const traits = TRAITS.filter(t => t.niche === key);
-    const tiers = [];
-    for (const t of traits) {
-      const tier = traitTier(t) - 1;
-      (tiers[tier] ||= []).push(t);
-    }
-    return { key, tiers, maxTier: tiers.length, height: 48 + Math.max(1, ...tiers.map(t => t.length)) * 27 };
-  });
+  return Object.keys(DIMENSIONS).map(key => ({
+    key,
+    traits: TRAITS.filter(t => t.dimension === key).sort((a, b) => traitTier(a) - traitTier(b)),
+  }));
 }
 function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
-  ui.fillStyle = '#c8d0e8'; ui.font = '13px monospace'; ui.fillText('Osvetljene lastnosti so odklenjene; med vejami izbereš le eno pot. Kolesce ali ↑ / ↓ za pomik.', W / 2, 63);
-  const groups = treeGroups(), rowHeights = [];
+  ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace'; ui.fillText('Štiri smeri se prepletajo; svetli robovi so odklenjeni, zelena označuje izbrane, črtica levo nišo. Kolesce / ↑ ↓ za pomik.', W / 2, 63);
+  const groups = treeGroups(), nodeTop = 110, rowHeight = 25, maxNodes = Math.max(...groups.map(g => g.traits.length));
+  const contentBottom = nodeTop + maxNodes * rowHeight + 4;
+  treeScroll = clamp(treeScroll, 0, Math.max(0, contentBottom - 488));
   treeNodeBoxes = [];
-  for (let i = 0; i < groups.length; i += 3) rowHeights.push(Math.max(...groups.slice(i, i + 3).map(g => g.height)) + 12);
-  const contentH = 82 + rowHeights.reduce((sum, h) => sum + h, 0);
-  treeScroll = clamp(treeScroll, 0, Math.max(0, contentH - 470));
   ui.save(); ui.beginPath(); ui.rect(0, 78, W, 410); ui.clip();
-  let rowY = 84 - treeScroll;
-  for (let row = 0; row * 3 < groups.length; row++) {
-    const batch = groups.slice(row * 3, row * 3 + 3);
-    batch.forEach((g, col) => {
-      const x = 12 + col * 316, width = 304, y = rowY;
-      ui.fillStyle = 'rgba(22,27,44,.88)'; ui.fillRect(x, y, width, g.height);
-      ui.strokeStyle = NICHES[g.key].color; ui.lineWidth = 1.5; ui.strokeRect(x, y, width, g.height);
-      ui.textAlign = 'left'; ui.fillStyle = NICHES[g.key].color; ui.font = 'bold 13px monospace'; ui.fillText(NICHES[g.key].name.toUpperCase(), x + 8, y + 17);
-      const nodeWidth = Math.min(74, 270 / Math.max(1, g.maxTier));
-      const tierStep = 280 / Math.max(1, g.maxTier);
-      const nodeX = tier => x + 8 + tier * tierStep;
-      const nodeY = (tier, index) => y + 37 + index * 27;
-      const positions = new Map();
-      g.tiers.forEach((nodes, tier) => nodes.forEach((trait, index) => positions.set(trait.id, { x: nodeX(tier), y: nodeY(tier, index) })));
-      for (const trait of TRAITS.filter(t => t.niche === g.key && t.parent && positions.has(t.parent))) {
-        const from = positions.get(trait.parent), to = positions.get(trait.id);
-        ui.beginPath(); ui.moveTo(from.x + 10, from.y + 7); ui.lineTo(to.x, to.y + 7);
-        ui.strokeStyle = owned.has(trait.parent) && owned.has(trait.id) ? '#9be15d' : '#626b82'; ui.lineWidth = 1; ui.stroke();
-      }
-      g.tiers.forEach(nodes => nodes.forEach(trait => {
-        const pos = positions.get(trait.id), unlocked = traitState(trait, owned) === 'open', acquired = owned.has(trait.id);
-        ui.fillStyle = acquired ? '#31533c' : unlocked ? '#29344b' : '#171b2a';
-        ui.fillRect(pos.x, pos.y, nodeWidth, 19);
-        ui.strokeStyle = acquired ? '#9be15d' : unlocked ? NICHES[g.key].color : '#41485a'; ui.lineWidth = 1; ui.strokeRect(pos.x, pos.y, nodeWidth, 19);
-        ui.fillStyle = acquired ? '#c8ffc0' : unlocked ? '#e5e9f4' : '#778096';
-        ui.font = '9px monospace'; ui.textAlign = 'left';
-        const labelLength = Math.max(4, Math.floor((nodeWidth - 6) / 5.5));
-        const label = trait.name.length > labelLength ? trait.name.slice(0, labelLength - 1) + '…' : trait.name;
-        ui.fillText(label, pos.x + 3, pos.y + 13);
-        treeNodeBoxes.push({ trait, x: pos.x, y: pos.y - treeScroll, w: nodeWidth, h: 19 });
-      }));
-    });
-    rowY += rowHeights[row];
+  const positions = new Map();
+  groups.forEach((g, col) => {
+    const x = 10 + col * 237, width = 228;
+    ui.fillStyle = 'rgba(22,27,44,.72)'; ui.fillRect(x, 82, width, 406);
+    ui.strokeStyle = DIMENSIONS[g.key].color; ui.lineWidth = 1.5; ui.strokeRect(x, 82, width, 406);
+    ui.textAlign = 'left'; ui.fillStyle = DIMENSIONS[g.key].color; ui.font = 'bold 11px monospace';
+    ui.fillText(DIMENSIONS[g.key].name.toUpperCase(), x + 7, 100);
+    g.traits.forEach((trait, index) => positions.set(trait.id, { trait, x: x + 6, y: nodeTop + index * rowHeight - treeScroll, w: width - 12, h: 20 }));
+  });
+  for (const trait of TRAITS) {
+    const to = positions.get(trait.id);
+    if (!to) continue;
+    for (const requiredId of traitRequires(trait)) {
+      const from = positions.get(requiredId);
+      if (!from) continue;
+      ui.beginPath();
+      ui.moveTo(from.x + from.w / 2, from.y + from.h);
+      ui.bezierCurveTo(from.x + from.w / 2, from.y + from.h + 12, to.x + to.w / 2, to.y - 12, to.x + to.w / 2, to.y);
+      ui.strokeStyle = owned.has(requiredId) && owned.has(trait.id) ? '#9be15d' : 'rgba(178,190,216,.18)';
+      ui.lineWidth = owned.has(requiredId) && owned.has(trait.id) ? 2 : 1;
+      ui.stroke();
+    }
+  }
+  for (const g of groups) for (const trait of g.traits) {
+    const pos = positions.get(trait.id), state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
+    ui.fillStyle = acquired ? '#31533c' : unlocked ? '#29344b' : '#171b2a';
+    ui.fillRect(pos.x, pos.y, pos.w, pos.h);
+    ui.strokeStyle = acquired ? '#9be15d' : unlocked ? DIMENSIONS[g.key].color : '#41485a'; ui.lineWidth = 1; ui.strokeRect(pos.x, pos.y, pos.w, pos.h);
+    ui.fillStyle = NICHES[trait.niche].color; ui.fillRect(pos.x + 1, pos.y + 1, 3, pos.h - 2);
+    ui.fillStyle = acquired ? '#c8ffc0' : unlocked ? '#e5e9f4' : '#778096';
+    ui.font = '9px monospace'; ui.textAlign = 'left'; ui.fillText(trait.name, pos.x + 8, pos.y + 13);
+    ui.textAlign = 'right'; ui.fillText(acquired ? '✓' : unlocked ? '○' : '·', pos.x + pos.w - 6, pos.y + 13);
+    treeNodeBoxes.push({ trait, x: pos.x, y: pos.y, w: pos.w, h: pos.h });
   }
   ui.restore();
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
   ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
   if (treeHoverTrait) {
-    const tipW = 320, tipH = 112;
+    const tipW = 360, tipH = 156;
     const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 78, H - tipH - 38);
     ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
     ui.strokeStyle = NICHES[treeHoverTrait.niche].color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
     ui.textAlign = 'left'; ui.fillStyle = NICHES[treeHoverTrait.niche].color; ui.font = 'bold 14px monospace'; ui.fillText(treeHoverTrait.name, x + 12, y + 22);
-    ui.fillStyle = '#dce3f7'; ui.font = '12px monospace';
-    wrap(treeHoverTrait.desc, tipW - 24).slice(0, 3).forEach((line, i) => ui.fillText(line, x + 12, y + 47 + i * 16));
+    ui.fillStyle = DIMENSIONS[treeHoverTrait.dimension].color; ui.font = '11px monospace';
+    ui.fillText(`${DIMENSIONS[treeHoverTrait.dimension].name} · ${NICHES[treeHoverTrait.niche].name}`, x + 12, y + 42);
+    ui.fillStyle = '#dce3f7'; ui.font = '11px monospace';
+    wrap('Učinek: ' + treeHoverTrait.desc, tipW - 24).slice(0, 2).forEach((line, i) => ui.fillText(line, x + 12, y + 63 + i * 15));
+    const requirements = traitRequires(treeHoverTrait).map(id => TRAIT_BY_ID[id].name);
+    wrap('Pogoji: ' + (requirements.length ? requirements.join(' + ') : 'začetna prilagoditev'), tipW - 24).slice(0, 2)
+      .forEach((line, i) => ui.fillText(line, x + 12, y + 98 + i * 15));
+    const exclusions = treeHoverTrait.excludes || [];
+    wrap('Nezdružljivo: ' + (exclusions.length ? exclusions.map(id => TRAIT_BY_ID[id].name).join(', ') : 'nič'), tipW - 24).slice(0, 1)
+      .forEach((line, i) => ui.fillText(line, x + 12, y + 135 + i * 15));
     ui.textAlign = 'center';
   }
 }
@@ -1187,7 +1188,9 @@ function drawChoose() {
       ui.fillStyle = '#fff'; ui.fillText('✦', r.x + 14, r.y + 17);
     }
     ui.fillStyle = '#10121c';
-    ui.fillText(t.syn ? 'SINERGIJA' : `${NICHES[t.niche].name.toUpperCase()} · ${generic ? 'splošna' : t.boss ? 'šefovska' : 'raven ' + traitTier(t)}`, r.x + (t.syn ? 28 : 8), r.y + 17);
+    const category = t.syn ? 'SINERGIJA' : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
+      : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
+    ui.fillText(category, r.x + (t.syn ? 28 : 8), r.y + 17);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
     ui.fillStyle = '#fff'; ui.font = 'bold 19px monospace'; ui.fillText(t.name, r.x + 10, r.y + 52);
     ui.font = '13px monospace'; ui.fillStyle = '#dde';
@@ -1205,7 +1208,7 @@ function drawChoose() {
     const hs = generic || t.boss ? [] : hintsSyn(t, owned);
     const opens = generic || t.boss ? [] : opensWhat(t), closes = generic ? [] : closesWhat(t, owned);
     ui.fillStyle = '#9fd3ff';
-    wrap(opens.length ? '▶ Odkleni: ' + opens.join(', ') : generic || t.boss ? '' : '▶ Konec razvojne veje', r.w - 20).slice(0, 2).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
+    wrap(opens.length ? '▶ Povezave: ' + opens.join(', ') : generic || t.boss ? '' : '▶ Konec razvojne poti', r.w - 20).slice(0, 2).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
     if (hs.length) { ui.fillStyle = NICHES.syn.color; wrap('★ Omogoči sinergijo: ' + hs.join(', '), r.w - 20).slice(0, 1).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; }); }
     ui.fillStyle = '#ff9a6a';
     wrap(closes.length ? '✖ Zapre: ' + closes.join(', ') : '', r.w - 20).slice(0, 3).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
