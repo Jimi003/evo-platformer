@@ -18,7 +18,7 @@ Med izbiro izboljšave so prikazane trenutne statistike stvora. Če stopnjo zakl
 
 ## Dnevno-nočni cikel
 
-Med igranjem se v približno dveh minutah izmenjajo dan, mrak, noč in zora. Spreminjajo se nebo, osvetlitev, zvezde in kresničke, ambient pa podnevi poudari ptičje petje, ponoči pa čričke. Cikel se med premorom ustavi in shrani z igro; za zdaj ne spreminja sovražnikov, škode ali nagrad.
+Med igranjem se v štirih minutah izmenjajo dan, mrak, noč in zora: dan in noč trajata po 90 sekund, mrak in zora pa po 30 sekund. Spreminjajo se nebo, osvetlitev, zvezde in kresničke, ambient pa podnevi poudari ptičje petje, ponoči pa čričke. Cikel se med premorom ustavi in shrani z igro; za zdaj ne spreminja sovražnikov, škode ali nagrad.
 
 ## Objava na spletu
 

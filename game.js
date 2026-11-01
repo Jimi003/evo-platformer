@@ -3,7 +3,8 @@ const W = 960, WORLD_W = 1440, H = 540, G = 1500, RW = 1280, RH = 720;
 const wx = x => x / 40, wy = y => (540 - y) / 40;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const DAY_CYCLE_SECONDS = 120;
+const DAYLIGHT_SECONDS = 90, DUSK_DAWN_SECONDS = 30;
+const DAY_CYCLE_SECONDS = (DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS) * 2;
 let dayNightLevel = 0, dayNightUpdateTimer = 0, dayNightRig = null;
 
 // ---------- Renderer, luči, kamera ----------
@@ -55,8 +56,19 @@ function updateDayNight(dt = 0, force = false) {
   if (!force && dayNightUpdateTimer < 0.1) return;
   dayNightUpdateTimer = 0;
   if (!skyTex) return;
-  const phase = (dayCycleTime % DAY_CYCLE_SECONDS) / DAY_CYCLE_SECONDS * Math.PI * 2;
-  const sunHeight = Math.cos(phase), night = (1 - sunHeight) / 2, twilight = 1 - Math.abs(sunHeight);
+  const cyclePosition = dayCycleTime % DAY_CYCLE_SECONDS;
+  const nightStart = DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS;
+  const dawnStart = nightStart + DAYLIGHT_SECONDS;
+  let night = 0, twilight = 0;
+  if (cyclePosition >= DAYLIGHT_SECONDS && cyclePosition < nightStart) {
+    const transition = (cyclePosition - DAYLIGHT_SECONDS) / DUSK_DAWN_SECONDS;
+    night = transition; twilight = Math.sin(Math.PI * transition);
+  } else if (cyclePosition >= nightStart && cyclePosition < dawnStart) night = 1;
+  else if (cyclePosition >= dawnStart) {
+    const transition = (cyclePosition - dawnStart) / DUSK_DAWN_SECONDS;
+    night = 1 - transition; twilight = Math.sin(Math.PI * transition);
+  }
+  const phase = cyclePosition / DAY_CYCLE_SECONDS * Math.PI * 2;
   dayNightLevel = night;
   const th = THEMES[(room - 1 + THEMES.length) % THEMES.length];
   const top = new THREE.Color(th.sky[0]).lerp(new THREE.Color('#070b20'), night * 0.88).lerp(new THREE.Color('#c76c73'), twilight * 0.28);
