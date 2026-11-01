@@ -352,7 +352,7 @@ function buildEnemy(kind) {
   const M = (c, o) => { const m = stdMat(c, o); mats.push(m); return m; };
   const root = new THREE.Group(), model = new THREE.Group();
   root.add(model);
-  const rig = { root, model, mats, legs: [], kind };
+  const rig = { root, model, mats, legs: [], segments: [], kind };
   const eye = (parent, p, r) => {
     mk(parent, GEO.sph, new THREE.MeshBasicMaterial({ color: '#fff' }), p, [r, r, r]);
     mk(parent, GEO.sph, new THREE.MeshBasicMaterial({ color: '#111' }), [p[0] + r * 0.6, p[1], p[2]], [r * 0.55, r * 0.6, r * 0.55]);
@@ -379,35 +379,50 @@ function buildEnemy(kind) {
     }
     for (const side of [-1, 1]) { const p = new THREE.Group(); p.position.set(0.15, 0.2, side * 0.18); model.add(p); limb(p, d, 0.15, 0.04); }
   } else if (kind === 'spitter') {
-    const b = M('#7cc242'), d = M('#3d7a1a'), s = glowMat('#d4ff4a', 0.8);
-    mk(model, GEO.taper, b, [0, 0.27, 0], [0.12, 0.54, 0.12]);
-    for (let i = 0; i < 4; i++) spike(model, d, [0, 0.02, 0], 0.07, 0.3, [Math.sin(i * 1.57) * 1.1, 0, Math.cos(i * 1.57) * 1.1]);
-    const head = new THREE.Group(); head.position.set(0.04, 0.64, 0); model.add(head); rig.head = head;
-    mk(head, GEO.sph, b, [0, 0, 0], [0.24, 0.22, 0.22]);
-    mk(head, GEO.sph, M('#2a1a2e'), [0.15, -0.02, 0], [0.1, 0.12, 0.12]);
-    eye(head, [0.1, 0.12, 0.13], 0.05); eye(head, [0.1, 0.12, -0.13], 0.05);
-    for (let i = 0; i < 3; i++) mk(head, GEO.sph, d, [-0.05 + i * 0.07, 0.2, 0], [0.05, 0.05, 0.05]);
-    rig.sac = mk(model, GEO.sph, s, [-0.15, 0.52, 0], [0.1, 0.1, 0.1]);
-  } else if (kind === 'armored') {
-    const shell = M('#697d87', { metalness: 0.45, roughness: 0.42 }), plate = M('#a9bac0'), under = M('#344b55');
-    const eyeM = glowMat('#ffbd4a', 1.2), weakM = glowMat('#ff4c3a', 1.8);
-    mk(model, GEO.sph, under, [0, 0.32, 0], [0.43, 0.24, 0.34]);
-    mk(model, GEO.sph, shell, [-0.08, 0.5, 0], [0.42, 0.26, 0.38]);
+    const b = M('#79b84d'), d = M('#365f32'), lip = M('#b7d875'), s = glowMat('#d4ff4a', 0.8);
+    mk(model, GEO.sph, b, [-0.02, 0.25, 0], [0.34, 0.22, 0.27]);
+    rig.stalk = mk(model, GEO.taper, d, [0.08, 0.52, 0], [0.11, 0.42, 0.11], [0, 0, -0.24]);
+    const head = new THREE.Group(); head.position.set(0.18, 0.7, 0); model.add(head); rig.head = head;
+    mk(head, GEO.sph, b, [0.02, 0.02, 0], [0.22, 0.2, 0.22]);
+    mk(head, GEO.cone, lip, [0.24, -0.02, 0], [0.14, 0.21, 0.14], [0, 0, -Math.PI / 2]);
+    mk(head, GEO.sph, M('#263228'), [0.31, -0.03, 0], [0.055, 0.11, 0.11]);
+    eye(head, [0.1, 0.12, 0.13], 0.045); eye(head, [0.1, 0.12, -0.13], 0.045);
     for (const side of [-1, 1]) {
-      mk(model, GEO.sph, plate, [0.04, 0.58, side * 0.19], [0.27, 0.2, 0.21], [0.05, 0, side * 0.2]);
-      mk(model, GEO.sph, shell, [-0.27, 0.48, side * 0.22], [0.17, 0.17, 0.16]);
-      eye(model, [0.34, 0.43, side * 0.12], 0.045);
+      spike(model, d, [-0.02, 0.3, side * 0.2], 0.045, 0.28, [side * 0.75, 0, -0.3]);
+      const tendril = new THREE.Group(); tendril.position.set(-0.15, 0.18, side * 0.2); model.add(tendril);
+      limb(tendril, d, 0.2, 0.035); rig.legs.push(tendril);
     }
-    mk(model, GEO.box, under, [0.39, 0.32, 0], [0.12, 0.06, 0.2]);
-    const weakRing = mk(model, GEO.torus, M('#ffd36a'), [-0.39, 0.43, 0], [0.13, 0.13, 0.13], [Math.PI / 2, 0, 0]);
+    for (const side of [-1, 1]) {
+      const leg = new THREE.Group(); leg.position.set(-0.12, 0.18, side * 0.18); model.add(leg);
+      limb(leg, d, 0.16, 0.045); rig.legs.push(leg);
+    }
+    rig.sac = mk(model, GEO.sph, s, [-0.13, 0.52, 0], [0.11, 0.12, 0.11]);
+  } else if (kind === 'armored') {
+    const shell = M('#596b74', { metalness: 0.35, roughness: 0.48 }), plate = M('#a9bac0'), under = M('#344b55');
+    const weakM = glowMat('#ff4c3a', 1.8), weakRingM = glowMat('#ffd36a', 1.3);
+    mk(model, GEO.sph, under, [-0.06, 0.29, 0], [0.61, 0.18, 0.28]);
+    for (let i = 0; i < 5; i++) {
+      const x = 0.28 - i * 0.17, y = 0.38 + Math.sin(i * 0.65) * 0.025;
+      const segment = new THREE.Group(); segment.position.set(x, y, 0); model.add(segment);
+      mk(segment, GEO.sph, shell, [0, 0, 0], [0.19, 0.21, 0.25]);
+      mk(segment, GEO.sph, plate, [-0.015, 0.075, 0], [0.16, 0.14, 0.23]);
+      for (const side of [-1, 1]) mk(segment, GEO.sph, plate, [0, 0.01, side * 0.16], [0.13, 0.1, 0.09]);
+      segment.userData.baseY = y; rig.segments.push(segment);
+      if (i < 4) spike(segment, shell, [-0.02, 0.16, 0], 0.04, 0.11, [0, 0, -0.12]);
+    }
+    const head = mk(model, GEO.sph, shell, [0.43, 0.39, 0], [0.21, 0.18, 0.2]);
+    mk(model, GEO.sph, under, [0.55, 0.31, 0], [0.13, 0.055, 0.13]);
+    for (const side of [-1, 1]) {
+      eye(model, [0.48, 0.49, side * 0.12], 0.045);
+      spike(model, plate, [0.36, 0.5, side * 0.13], 0.025, 0.18, [side * 0.5, 0, 0.7]);
+      for (const x of [0.2, -0.04, -0.28]) {
+        const leg = new THREE.Group(); leg.position.set(x, 0.22, side * 0.18); model.add(leg);
+        limb(leg, under, 0.16, 0.045); rig.legs.push(leg);
+      }
+    }
+    const weakRing = mk(model, GEO.torus, weakRingM, [-0.53, 0.39, 0], [0.17, 0.17, 0.17], [Math.PI / 2, 0, 0]);
     weakRing.castShadow = false;
-    rig.weakpoint = mk(model, GEO.sph, weakM, [-0.39, 0.43, 0], [0.095, 0.095, 0.095]);
-    for (let i = 0; i < 3; i++) spike(model, shell, [-0.1 - i * 0.14, 0.72, 0], 0.045, 0.14, [0, 0, -0.2]);
-    for (const [x, z] of [[0.22, 0.21], [0.22, -0.21], [-0.24, 0.21], [-0.24, -0.21]]) {
-      const p = new THREE.Group(); p.position.set(x, 0.25, z); model.add(p);
-      limb(p, under, 0.22, 0.07); mk(p, GEO.box, plate, [0.06, -0.22, 0], [0.17, 0.04, 0.1]);
-      rig.legs.push(p);
-    }
+    rig.weakpoint = mk(model, GEO.sph, weakM, [-0.53, 0.39, 0], [0.11, 0.11, 0.11]);
   } else { // boss
     const b = M('#8e2433'), d = M('#4a1018', { metalness: 0.5, roughness: 0.4 }), l = M('#c44a5a');
     const core = glowMat('#ff3030', 1.4), gold = M('#e8c66a', { metalness: 0.55, roughness: 0.35 });

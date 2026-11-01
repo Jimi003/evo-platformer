@@ -5,7 +5,9 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const DAYLIGHT_SECONDS = 90, DUSK_DAWN_SECONDS = 30;
 const DAY_CYCLE_SECONDS = (DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS) * 2;
+const LUNAR_CYCLE_SECONDS = DAY_CYCLE_SECONDS * 8;
 let dayNightLevel = 0, dayNightUpdateTimer = 0, dayNightRig = null;
+let moonCycleTime = DAY_CYCLE_SECONDS * 4;
 
 // ---------- Renderer, luči, kamera ----------
 const glc = document.getElementById('gl'), uic = document.getElementById('ui');
@@ -33,6 +35,10 @@ scene.add(sun, sun.target);
 const rim = new THREE.DirectionalLight('#7aa8ff', 0.55);
 rim.position.set(10, 8, -14);
 scene.add(rim);
+const moonLight = new THREE.DirectionalLight('#afc8ff', 0);
+moonLight.position.set(-5, 14, -12);
+moonLight.target.position.set(12, 4, 0);
+scene.add(moonLight, moonLight.target);
 
 const THEMES = [
   { sky: ['#16224a', '#c0689a'], fog: '#4a3a8a', ground: '#3a3254', top: '#6fcf6a', far: '#2c2a66', far2: '#5a3a8a', far3: '#8a4a9a', tree: '#2f7a68', tree2: '#e0a040', glow: '#ffd86b', style: 'pine', stars: true, accent: '#ff9ad0' },
@@ -41,7 +47,7 @@ const THEMES = [
   { sky: ['#2a4a7a', '#e8f4ff'], fog: '#9ab8e0', ground: '#56688a', top: '#e8f4ff', far: '#6a86b8', far2: '#8aa6d0', far3: '#c0d4f0', tree: '#8ab0c8', tree2: '#e8f4ff', glow: '#ffffff', style: 'pine', stars: false, accent: '#9ad8ff' },
   { sky: ['#10061f', '#7a2a9a'], fog: '#3a1a5a', ground: '#2e2244', top: '#b455d6', far: '#241044', far2: '#4a2a7a', far3: '#7a3a9a', tree: '#5a2a8a', tree2: '#e29bff', glow: '#e29bff', style: 'mushroom', stars: true, accent: '#7affd0' },
 ];
-let roomGroup = null, roomMats = [], fireflies = [], skyTex = null, fruitRig = null;
+let roomGroup = null, roomMats = [], roomTextures = [], roomGeometries = [], fireflies = [], cloudGroups = [], skyTex = null, fruitRig = null, wetLevel = null, waterFlowTexture = null;
 function skyTexture(a, b) {
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
@@ -50,6 +56,47 @@ function skyTexture(a, b) {
   const texture = new THREE.CanvasTexture(c);
   texture.userData.skyContext = g;
   return texture;
+}
+function createMoonTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.userData.setPhase = phase => {
+    const image = ctx.createImageData(128, 128), angle = phase * Math.PI * 2;
+    const lightX = Math.sin(angle), lightZ = -Math.cos(angle);
+    for (let y = 0; y < 128; y++) for (let x = 0; x < 128; x++) {
+      const nx = (x + 0.5 - 64) / 54, ny = (y + 0.5 - 64) / 54;
+      const radiusSq = nx * nx + ny * ny;
+      if (radiusSq > 1) continue;
+      const light = nx * lightX + Math.sqrt(1 - radiusSq) * lightZ;
+      if (light <= -0.02) continue;
+      const index = (y * 128 + x) * 4, brightness = 0.78 + Math.max(0, light) * 0.22;
+      image.data[index] = 243 * brightness;
+      image.data[index + 1] = 237 * brightness;
+      image.data[index + 2] = 207 * brightness;
+      image.data[index + 3] = Math.round(clamp((light + 0.02) * 40, 0, 1) * 255);
+    }
+    ctx.putImageData(image, 0, 0);
+    texture.needsUpdate = true;
+  };
+  texture.userData.setPhase(0.5);
+  return texture;
+}
+function createRadialGlowTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d'), gradient = ctx.createRadialGradient(64, 64, 4, 64, 64, 62);
+  gradient.addColorStop(0, 'rgba(255,255,255,0.65)');
+  gradient.addColorStop(0.35, 'rgba(255,255,255,0.26)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient; ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(canvas);
+}
+function createSunTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d'), gradient = ctx.createRadialGradient(64, 64, 4, 64, 64, 56);
+  gradient.addColorStop(0, '#fffce1'); gradient.addColorStop(0.72, '#ffe59a'); gradient.addColorStop(1, '#ffc85a');
+  ctx.beginPath(); ctx.arc(64, 64, 56, 0, Math.PI * 2); ctx.fillStyle = gradient; ctx.fill();
+  return new THREE.CanvasTexture(canvas);
 }
 function updateDayNight(dt = 0, force = false) {
   dayNightUpdateTimer += dt;
@@ -68,38 +115,91 @@ function updateDayNight(dt = 0, force = false) {
     const transition = (cyclePosition - dawnStart) / DUSK_DAWN_SECONDS;
     night = 1 - transition; twilight = Math.sin(Math.PI * transition);
   }
-  const phase = cyclePosition / DAY_CYCLE_SECONDS * Math.PI * 2;
+  const moonPhase = (moonCycleTime % LUNAR_CYCLE_SECONDS) / LUNAR_CYCLE_SECONDS;
+  const moonIllumination = (1 - Math.cos(moonPhase * Math.PI * 2)) / 2;
   dayNightLevel = night;
   const th = THEMES[(room - 1 + THEMES.length) % THEMES.length];
-  const top = new THREE.Color(th.sky[0]).lerp(new THREE.Color('#070b20'), night * 0.88).lerp(new THREE.Color('#c76c73'), twilight * 0.28);
-  const bottom = new THREE.Color(th.sky[1]).lerp(new THREE.Color('#151b39'), night * 0.82).lerp(new THREE.Color('#e58b68'), twilight * 0.25);
+  const dayTop = new THREE.Color(th.sky[0]).lerp(new THREE.Color('#72b7e7'), 0.2);
+  const dayBottom = new THREE.Color(th.sky[1]).lerp(new THREE.Color('#fff0bd'), 0.16);
+  const top = dayTop.clone().lerp(new THREE.Color('#02040d'), night * 0.98).lerp(new THREE.Color('#df634f'), twilight * 0.58);
+  const bottom = dayBottom.clone().lerp(new THREE.Color('#050812'), night * 0.97).lerp(new THREE.Color('#f28a58'), twilight * 0.7);
   const ctx = skyTex.userData.skyContext, gradient = ctx.createLinearGradient(0, 0, 0, 256);
   gradient.addColorStop(0, top.getStyle()); gradient.addColorStop(1, bottom.getStyle());
   ctx.fillStyle = gradient; ctx.fillRect(0, 0, 2, 256); skyTex.needsUpdate = true;
-  const fogColor = new THREE.Color(th.fog).lerp(new THREE.Color('#10162d'), night * 0.72).lerp(new THREE.Color('#a65a68'), twilight * 0.22);
+  const duskColor = new THREE.Color('#e98662');
+  const fogColor = new THREE.Color(th.fog).lerp(new THREE.Color('#080b19'), night * 0.94).lerp(duskColor, twilight * 0.62);
   scene.fog.color.copy(fogColor);
-  hemi.color.set('#c8d4ff').lerp(new THREE.Color('#7186bd'), night * 0.45);
-  hemi.groundColor.set('#4a3a5a').lerp(new THREE.Color('#171b32'), night * 0.4);
-  hemi.intensity = 0.6 - night * 0.2;
-  sun.color.set('#fff0d8').lerp(new THREE.Color('#a5b8ee'), night * 0.7);
-  sun.intensity = 0.8 - night * 0.32;
-  sun.position.x = -4 + Math.sin(phase) * 3;
-  sun.position.y = 18 - night * 4;
-  rim.intensity = 0.55 + night * 0.15;
-  if (dayNightRig) {
-    dayNightRig.celestial.opacity = night;
-    dayNightRig.stars.opacity = night;
-    dayNightRig.halo.opacity = 0.12 * night;
-    dayNightRig.shafts.opacity = 0.035 * (1 - night);
-    dayNightRig.fireflies.opacity = 0.22 + night * 0.58;
+  const dayFactor = 1 - night;
+  const shadowSunX = -10 + (cyclePosition < DAYLIGHT_SECONDS ? cyclePosition / DAYLIGHT_SECONDS : 1) * 58;
+  const cloudShade = cloudGroups.reduce((shade, cloud) => {
+    const dx = (cloud.position.x - shadowSunX) / 4.5;
+    return shade + Math.exp(-dx * dx * 0.5) * 0.17;
+  }, 0);
+  const cloudFactor = 1 - Math.min(0.82, cloudShade);
+  hemi.color.set('#d7e5ff').lerp(new THREE.Color('#25375f'), night * 0.85).lerp(duskColor, twilight * 0.45);
+  hemi.groundColor.set('#60704e').lerp(new THREE.Color('#03040a'), night * (1 - moonIllumination * 0.78)).lerp(new THREE.Color('#9a5945'), twilight * 0.5);
+  hemi.intensity = dayFactor * 0.92 * cloudFactor + twilight * 0.22 + night * (0.008 + moonIllumination * 0.24);
+  sun.color.set('#fff3cf').lerp(duskColor, twilight * 0.9);
+  sun.intensity = dayFactor * (1.15 - twilight * 0.5) * cloudFactor;
+  rim.intensity = dayFactor * 0.22 + twilight * 0.045 + night * (0.002 + moonIllumination * 0.09);
+  moonLight.intensity = night * moonIllumination * 0.62;
+  const sunProgress = clamp(cyclePosition / DAYLIGHT_SECONDS, 0, 1);
+  let sunX = -10 + sunProgress * 58;
+  let sunY = 5 + Math.sin(Math.PI * sunProgress) * 17;
+  let sunVisibility = 1;
+  if (cyclePosition >= DAYLIGHT_SECONDS && cyclePosition < nightStart) {
+    const dusk = (cyclePosition - DAYLIGHT_SECONDS) / DUSK_DAWN_SECONDS;
+    sunX = 48 + dusk * 4; sunY = 5 - dusk * 7; sunVisibility = 1 - dusk;
+  } else if (cyclePosition >= nightStart && cyclePosition < dawnStart) {
+    sunX = 52; sunY = -2; sunVisibility = 0;
+  } else if (cyclePosition >= dawnStart) {
+    const dawn = (cyclePosition - dawnStart) / DUSK_DAWN_SECONDS;
+    sunX = -10 + dawn * 4; sunY = -2 + dawn * 7; sunVisibility = dawn;
   }
-  Snd.setDayNight(night);
+  const moonProgress = clamp((cyclePosition - DAYLIGHT_SECONDS - DUSK_DAWN_SECONDS) / DAYLIGHT_SECONDS, 0, 1);
+  const moonX = -10 + moonProgress * 58;
+  const moonY = 5 + Math.sin(Math.PI * moonProgress) * 17;
+  sun.position.set(sunX, sunY + 10, 14);
+  sun.target.position.set(12, 4, 0);
+  moonLight.position.set(moonX, moonY + 8, -12);
+  moonLight.target.position.set(12, 4, 0);
+  const cloudColor = new THREE.Color('#dbe8f5').lerp(new THREE.Color('#101827'), night * 0.8).lerp(duskColor, twilight * 0.45);
+  for (const cloud of cloudGroups) {
+    if (dt > 0) {
+      cloud.position.x += cloud.userData.speed * dt;
+      if (cloud.position.x > WORLD_W / 40 + 14) cloud.position.x = -14;
+    }
+  }
+  if (dayNightRig && dayNightRig.cloudMaterial) dayNightRig.cloudMaterial.color.copy(cloudColor);
+  if (dayNightRig) {
+    dayNightRig.sun.position.set(sunX, sunY, -35);
+    dayNightRig.sun.material.opacity = sunVisibility * 0.92;
+    dayNightRig.sunGlow.position.set(sunX, sunY, -35.2);
+    dayNightRig.sunGlow.material.opacity = sunVisibility * 0.2 * cloudFactor;
+    dayNightRig.haloMesh.position.set(sunX, sunY, -35.4);
+    dayNightRig.halo.opacity = sunVisibility * 0.14 * cloudFactor;
+    dayNightRig.moon.position.set(moonX, moonY, -34);
+    dayNightRig.moon.material.opacity = night * 0.95;
+    dayNightRig.moon.material.map.userData.setPhase(moonPhase);
+    dayNightRig.moonGlow.position.set(moonX, moonY, -34.2);
+    dayNightRig.moonGlow.material.opacity = night * moonIllumination * 0.15;
+    dayNightRig.stars.opacity = night * (1 - cloudShade * 0.3);
+    dayNightRig.clouds.forEach(cloud => cloud.children.forEach(mesh => { mesh.material.opacity = 0.14 + dayFactor * 0.1; }));
+    dayNightRig.shafts.opacity = dayFactor * 0.018 * cloudFactor;
+    dayNightRig.fireflies.opacity = 0.08 + night * 0.82;
+    dayNightRig.sunX = sunX;
+  }
+  Snd.setDayNight(night, moonIllumination, cloudFactor);
 }
 function buildRoomScene() {
-  if (roomGroup) { scene.remove(roomGroup); roomMats.forEach(m => m.dispose()); if (skyTex) skyTex.dispose(); }
+  if (roomGroup) {
+    scene.remove(roomGroup); roomMats.forEach(m => m.dispose()); roomTextures.forEach(t => t.dispose());
+    roomGeometries.forEach(g => g.dispose()); if (skyTex) skyTex.dispose();
+  }
   fruitRig = null;
   dayNightRig = null;
-  roomMats = []; fireflies = [];
+  waterFlowTexture = null;
+  roomMats = []; roomTextures = []; roomGeometries = []; fireflies = []; cloudGroups = [];
   const th = THEMES[(room - 1) % THEMES.length];
   const M = (c, o) => { const m = stdMat(c, o); roomMats.push(m); return m; };
   roomGroup = new THREE.Group(); scene.add(roomGroup);
@@ -107,9 +207,8 @@ function buildRoomScene() {
   scene.fog = new THREE.Fog(th.fog, 30, 85);
   const groundM = M(th.ground), topM = M(th.top), rockM = M(th.ground), farM = M(th.far), treeM = M(th.tree), trunkM = M('#3a2a2a');
   const rockMat = M('#8a8a96'), rockMat2 = M('#6e6e7a');
-  const fireflyM = glowMat(th.glow, 0.9), celestialM = glowMat(th.glow, 0.9);
-  fireflyM.transparent = true; celestialM.transparent = true; celestialM.opacity = 0;
-  roomMats.push(fireflyM, celestialM);
+  const fireflyM = glowMat(th.glow, 0.9); fireflyM.transparent = true;
+  roomMats.push(fireflyM);
   const crystalM = glowMat(th.glow, 0.7); roomMats.push(crystalM);
 
   platforms.forEach((p, i) => {
@@ -122,7 +221,7 @@ function buildRoomScene() {
     const ground = i === 0, w = ground ? WORLD_W / 40 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
     const cx = ground ? WORLD_W / 80 : (p.x + p.w / 2) / 40, top = wy(p.y);
     mk(roomGroup, GEO.box, groundM, [cx, top - h / 2, 0], [w, h, d]).receiveShadow = true;
-    const strip = mk(roomGroup, GEO.box, ground ? M(th.ground) : topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
+    const strip = mk(roomGroup, GEO.box, topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
     if (!ground) {
       const undersideM = M(th.far2);
       for (const side of [-1, 1]) {
@@ -141,19 +240,29 @@ function buildRoomScene() {
   });
   // tla za drevesi, da ne lebdijo v zraku
   const backM = M(th.ground); backM.color.multiplyScalar(1.25);
-  mk(roomGroup, GEO.box, backM, [WORLD_W / 80, 0.5, -37], [160, 1, 64]).receiveShadow = false;
+  mk(roomGroup, GEO.box, backM, [WORLD_W / 80, -4, -37], [160, 10, 64]).receiveShadow = false;
   const backTop = M(th.top); backTop.color.multiplyScalar(0.9);
   mk(roomGroup, GEO.box, backTop, [12, 0.96, -37], [160, 0.1, 64]).castShadow = false;
+  const nearBackM = M(th.ground); nearBackM.color.multiplyScalar(1.3);
+  mk(roomGroup, GEO.box, nearBackM, [WORLD_W / 80, -29, -8], [160, 60, 1]).receiveShadow = false;
+  const boundaryM = M(th.far2), boundaryTopM = M(th.far3);
+  for (const edge of [0.35, WORLD_W / 40 - 0.35]) {
+    mk(roomGroup, GEO.ico, boundaryM, [edge, 0.92, 0.65], [1.25, 1.25, 1.15], [0.1, 0.2, 0.08]).receiveShadow = true;
+    mk(roomGroup, GEO.ico, boundaryTopM, [edge + (edge < 1 ? 0.55 : -0.55), 0.83, 0.4],
+      [0.82, 0.82, 0.9], [0.05, 0.4, 0.12]).receiveShadow = true;
+  }
   // gorske plasti v različnih barvah
   [[th.far3, -66, 0.9, 9, 20], [th.far2, -54, 0.8, 8, 16], [th.far, -42, 0.7, 6, 13]].forEach(([c, z, hk, r0, r1]) => {
     const m = M(c);
     for (let i = 0; i < 12; i++) { const r = rand(r0, r1), h = rand(10, 20) * hk; mk(roomGroup, GEO.cone, m, [-14 + i * 6 + rand(-2, 2), h / 2 + 0.9, z], [r, h, r]).castShadow = false; }
   });
-  // oblaki
-  const cloudM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: th.stars ? 0.1 : 0.3, depthWrite: false }); roomMats.push(cloudM);
+  // Oblaki se premikajo, njihova lega pred soncem pa mehča dnevno svetlobo.
+  const cloudM = new THREE.MeshBasicMaterial({ color: '#dbe8f5', transparent: true, opacity: 0.2, depthWrite: false }); roomMats.push(cloudM);
   for (let i = 0; i < 9; i++) {
     const cx = rand(-10, WORLD_W / 40 + 10), cy = rand(9, 17), cz = rand(-60, -30);
-    for (let k = 0; k < 4; k++) mk(roomGroup, GEO.sph, cloudM, [cx + k * 2.2 - 3, cy + (k % 2) * 0.7, cz], [rand(2.5, 4), rand(1.2, 1.8), 1.5]).castShadow = false;
+    const cloud = new THREE.Group(); cloud.position.set(cx, cy, cz); cloud.userData.speed = rand(0.08, 0.22); roomGroup.add(cloud);
+    for (let k = 0; k < 4; k++) mk(cloud, GEO.sph, cloudM, [k * 1.4 - 2.1, (k % 2) * 0.35, 0], [rand(1.8, 2.7), rand(0.8, 1.2), 0.65]).castShadow = false;
+    cloudGroups.push(cloud);
   }
   const starM = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false }); roomMats.push(starM);
   for (let i = 0; i < 70; i++) mk(roomGroup, GEO.sph, starM, [rand(-20, 45), rand(8, 28), -80], [0.09, 0.09, 0.09]).castShadow = false;
@@ -182,29 +291,125 @@ function buildRoomScene() {
     const x = rand(-6, WORLD_W / 40 + 6), z = rand(-9, -5.2);
     mk(roomGroup, GEO.sph, i % 3 ? flowerM : t2M, [x, 1.05, z], [0.14, 0.1, 0.14]).castShadow = false;
   }
-  const moon = mk(roomGroup, GEO.sph, celestialM, [WORLD_W / 80 + 4, 15, -70], [4, 4, 4]); moon.castShadow = false;
-  const haloM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.12, depthWrite: false }); roomMats.push(haloM);
-  mk(roomGroup, GEO.sph, haloM, [WORLD_W / 80 + 4, 15, -70.5], [9, 9, 1]).castShadow = false;
-  const shaftM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide }); roomMats.push(shaftM);
-  for (let i = 0; i < 5; i++) { const s = mk(roomGroup, GEO.cone, shaftM, [rand(0, 24), 9, rand(-10, -4)], [rand(1.5, 3), 20, 1.5], [0, 0, rand(-0.2, 0.2)]); s.rotation.x = Math.PI; s.castShadow = false; }
-  const capM = glowMat(th.glow, 0.8); roomMats.push(capM);
-  for (let i = 0; i < 14; i++) {
-    const x = rand(-3, WORLD_W / 40 + 3), z = rand(-5, -1.5), h = rand(0.15, 0.4);
-    mk(roomGroup, GEO.cyl, trunkM, [x, 1 + h / 2, z], [0.03, h, 0.03]).castShadow = false;
-    mk(roomGroup, GEO.sph, capM, [x, 1 + h, z], [h * 0.6, h * 0.35, h * 0.6]).castShadow = false;
-  }
+  const sunTexture = createSunTexture(); roomTextures.push(sunTexture);
+  const sunM = new THREE.MeshBasicMaterial({ map: sunTexture, transparent: true, opacity: 0, depthWrite: false });
+  const moonTexture = createMoonTexture(); roomTextures.push(moonTexture);
+  const moonM = new THREE.MeshBasicMaterial({ map: moonTexture, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+  const glowTexture = createRadialGlowTexture(); roomTextures.push(glowTexture);
+  const sunGlowM = new THREE.MeshBasicMaterial({ map: glowTexture, color: '#ffd36e', transparent: true, opacity: 0, depthWrite: false });
+  const moonGlowM = new THREE.MeshBasicMaterial({ map: glowTexture, color: '#bccbff', transparent: true, opacity: 0, depthWrite: false });
+  const celestialGeo = new THREE.PlaneGeometry(1, 1); roomGeometries.push(celestialGeo);
+  const sunMesh = mk(roomGroup, celestialGeo, sunM, [0, 0, -35], [3.2, 3.2, 1]);
+  const moonMesh = mk(roomGroup, celestialGeo, moonM, [0, 0, -34], [2.6, 2.6, 1]);
+  const sunGlow = mk(roomGroup, celestialGeo, sunGlowM, [0, 0, -35.2], [6.6, 6.6, 1]);
+  const moonGlow = mk(roomGroup, celestialGeo, moonGlowM, [0, 0, -34.2], [5.2, 5.2, 1]);
+  [sunMesh, moonMesh, sunGlow, moonGlow].forEach(o => { o.castShadow = false; o.renderOrder = 1; });
+  roomMats.push(sunM, moonM, sunGlowM, moonGlowM);
+  const haloM = new THREE.MeshBasicMaterial({ map: glowTexture, color: '#fff0bd', transparent: true, opacity: 0, depthWrite: false }); roomMats.push(haloM);
+  const sunHalo = mk(roomGroup, celestialGeo, haloM, [0, 0, -35.4], [10, 10, 1]); sunHalo.castShadow = false;
+  const shaftM = new THREE.MeshBasicMaterial({ color: '#fff0bd', transparent: true, opacity: 0.018, depthWrite: false, side: THREE.DoubleSide }); roomMats.push(shaftM);
+  for (let i = 0; i < 5; i++) { const s = mk(roomGroup, GEO.cone, shaftM, [rand(0, 24), 9, rand(-10, -4)], [rand(0.8, 1.5), 14, 0.8], [0, 0, rand(-0.2, 0.2)]); s.rotation.x = Math.PI; s.castShadow = false; }
+  addGroundPlants(th, M);
   for (let i = 0; i < 34; i++) {
     const f = mk(roomGroup, GEO.sph, fireflyM, [rand(-2, WORLD_W / 40 + 2), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
     f.castShadow = false; f.userData = { bx: f.position.x, by: f.position.y, ph: rand(0, 6) };
     fireflies.push(f);
   }
+  if (wetLevel && wetLevel.active) addWetScenery(th, M);
   if (fruitTree) addFruitTreeToRoom();
-  dayNightRig = { celestial: celestialM, stars: starM, halo: haloM, shafts: shaftM, fireflies: fireflyM };
+  dayNightRig = { sun: sunMesh, moon: moonMesh, sunGlow, moonGlow, stars: starM, halo: sunHalo.material, haloMesh: sunHalo,
+    shafts: shaftM, fireflies: fireflyM, clouds: cloudGroups, cloudMaterial: cloudM };
   updateDayNight(0, true);
 }
+function addGroundPlants(th, M) {
+  const grass = [M('#477b43'), M('#67964a'), M('#8da95b')], moss = M('#55734a');
+  const stemM = M('#c8b78a'), capM = M('#c85e48'), paleCapM = M('#d5b978'), spotM = M('#f5e8c2');
+  const groundY = wy(500);
+  for (let i = 0; i < 75; i++) {
+    const x = rand(12, WORLD_W - 12) / 40, z = rand(-4.3, 3.7);
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let blade = 0; blade < n; blade++) {
+      const height = rand(0.12, 0.3);
+      spike(roomGroup, grass[Math.floor(Math.random() * grass.length)],
+        [x + rand(-0.09, 0.09), groundY, z + rand(-0.08, 0.08)], rand(0.018, 0.035), height,
+        [rand(-0.08, 0.08), 0, rand(-0.35, 0.35)]).traverse(o => { o.castShadow = false; });
+    }
+    if (i % 5 === 0) mk(roomGroup, GEO.sph, moss, [x, groundY + 0.025, z], [rand(0.12, 0.22), 0.035, rand(0.08, 0.15)]).castShadow = false;
+  }
+  for (const p of platforms) {
+    if (p.rock || p.h > 20) continue;
+    const top = wy(p.y);
+    for (const edge of [-1, 1]) for (let i = 0; i < 2; i++) {
+      const x = wx(p.x + (edge < 0 ? 14 + i * 18 : p.w - 14 - i * 18));
+      for (let blade = 0; blade < 3; blade++) {
+        spike(roomGroup, grass[(i + blade) % grass.length], [x, top, rand(-1.15, 1.15)],
+          0.025, rand(0.12, 0.24), [0, 0, rand(-0.3, 0.3)]).traverse(o => { o.castShadow = false; });
+      }
+    }
+  }
+  for (let i = 0; i < 9; i++) {
+    const x = rand(20, WORLD_W - 20) / 40, z = rand(1.3, 3.2), height = rand(0.12, 0.22);
+    mk(roomGroup, GEO.cyl, stemM, [x, groundY + height * 0.5, z], [0.035, height, 0.035]).castShadow = false;
+    const cap = Math.random() < 0.7 ? capM : paleCapM;
+    mk(roomGroup, GEO.sph, cap, [x, groundY + height, z], [height * 0.72, height * 0.36, height * 0.72]).castShadow = false;
+    if (cap === capM) for (let spot = 0; spot < 3; spot++) {
+      const a = spot * Math.PI * 2 / 3;
+      mk(roomGroup, GEO.sph, spotM, [x + Math.cos(a) * height * 0.36, groundY + height * 1.13, z + Math.sin(a) * height * 0.36],
+        [0.025, 0.018, 0.025]).castShadow = false;
+    }
+  }
+}
+function makeWaterTexture() {
+  const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 64, 0);
+  gradient.addColorStop(0, '#236b85'); gradient.addColorStop(0.5, '#67c7d8'); gradient.addColorStop(1, '#236b85');
+  ctx.fillStyle = gradient; ctx.fillRect(0, 0, 64, 256);
+  ctx.strokeStyle = 'rgba(222,250,255,.55)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 15; i++) {
+    const x = rand(8, 56), y = rand(0, 256);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + rand(-8, 8), y + 8, x + rand(-5, 5), y + 18); ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(1, 2);
+  roomTextures.push(texture);
+  return texture;
+}
+function addWetScenery(th, M) {
+  const waterTexture = makeWaterTexture();
+  const waterMat = new THREE.MeshBasicMaterial({ map: waterTexture, color: '#b7efff', transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false });
+  roomMats.push(waterMat);
+  const waterGeo = new THREE.PlaneGeometry(1, 1); roomGeometries.push(waterGeo);
+  const river = mk(roomGroup, waterGeo, waterMat, [wetLevel.riverX, wy(500) + 0.045, -8], [3.8, 30, 1], [-Math.PI / 2, 0, 0]);
+  river.castShadow = false;
+  const bankMat = M('#6d7651'), rockMat = M('#72766a');
+  for (const side of [-1, 1]) {
+    mk(roomGroup, GEO.box, bankMat, [wetLevel.riverX + side * 2.2, wy(500) + 0.06, -8], [0.65, 0.12, 30]).castShadow = false;
+    for (let i = 0; i < 7; i++) {
+      const z = -21 + i * 4.2 + rand(-0.8, 0.8), x = wetLevel.riverX + side * rand(2.5, 3.1);
+      mk(roomGroup, GEO.ico, rockMat, [x, wy(500) + 0.12, z], [rand(0.18, 0.38), rand(0.1, 0.22), rand(0.22, 0.42)],
+        [rand(0, 2), rand(0, 2), rand(0, 2)]).castShadow = false;
+    }
+  }
+  if (wetLevel.waterfall) {
+    const fallMat = new THREE.MeshBasicMaterial({ map: waterTexture, color: '#d3f7ff', transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false });
+    roomMats.push(fallMat);
+    const waterfall = mk(roomGroup, waterGeo, fallMat, [wetLevel.waterfallX, 5.2, -27], [3, 8.5, 1]);
+    waterfall.castShadow = false;
+    const pool = mk(roomGroup, waterGeo, waterMat, [wetLevel.waterfallX, wy(500) + 0.05, -22], [5, 4, 1], [-Math.PI / 2, 0, 0]);
+    pool.castShadow = false;
+    waterFlowTexture = waterTexture;
+  }
+}
+function updateWetScenery(dt) {
+  if (waterFlowTexture) waterFlowTexture.offset.y = (waterFlowTexture.offset.y + dt * 0.28) % 1;
+}
 function addFruitTreeToRoom() {
-  const treeM = stdMat('#76502d'), leafM = stdMat('#4f9b4e'), fruitM = glowMat('#ff6d36', 0.8), flowerM = stdMat('#ffd36a');
-  roomMats.push(treeM, leafM, fruitM, flowerM);
+  const treeM = stdMat('#76502d'), leafM = stdMat('#4f9b4e'), fruitM = glowMat('#ff6d36', 0.8);
+  const petalM = new THREE.MeshStandardMaterial({ color: '#ffb9d1', roughness: 0.65, side: THREE.DoubleSide });
+  const flowerM = stdMat('#ffd36a');
+  roomMats.push(treeM, leafM, fruitM, flowerM, petalM);
   const group = new THREE.Group(); roomGroup.add(group);
   const x = wx(fruitTree.x), ground = wy(500);
   mk(group, GEO.cyl, treeM, [x, ground + 1.15, -0.5], [0.24, 1.15, 0.22]);
@@ -215,9 +420,16 @@ function addFruitTreeToRoom() {
   for (const [dx, dy, size] of [[0, 3.1, 0.72], [-0.38, 2.85, 0.5], [0.4, 2.85, 0.5]]) {
     mk(group, GEO.sph, leafM, [x + dx, ground + dy, -0.55], [size, size * 0.75, size * 0.42]).castShadow = false;
   }
-  const fruit = mk(group, GEO.sph, fruitM, [x, wy(fruitTree.y), 0.25], [0.08, 0.08, 0.08]);
+  const fruit = mk(group, GEO.sph, fruitM, [x, wy(fruitTree.y), 0.25], [0.06, 0.06, 0.06]);
   const stem = mk(group, GEO.cone, flowerM, [x, wy(fruitTree.y) + 0.1, 0.25], [0.035, 0.08, 0.035]);
-  fruitRig = { group, fruit, stem };
+  const petals = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = i * Math.PI * 2 / 5;
+    petals.push(mk(group, GEO.sph, petalM,
+      [x + Math.cos(angle) * 0.11, wy(fruitTree.y) + 0.1, 0.25 + Math.sin(angle) * 0.08],
+      [0.09, 0.05, 0.06], [0, angle, 0]));
+  }
+  fruitRig = { group, fruit, stem, petals };
 }
 
 // ---------- Delci in obrazi ----------
@@ -271,7 +483,7 @@ function saveBest(done) {
   return rec;
 }
 let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [], choiceCool = 0, mouse = { x: -1, y: -1 };
-let synergyCards = [], treeScroll = 0, pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
+let synergyCards = [], pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
 const SAVE_KEY = 'evo-save-v1';
 
 function newPlayer() {
@@ -289,7 +501,7 @@ function saveGame() {
   const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
-    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree, dayCycleTime,
+    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel,
     player: savedPlayer,
     platforms,
     enemies: enemies.map(e => plain(e, ['rig'])),
@@ -318,6 +530,8 @@ function loadSavedGame() {
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
     room = data.room;
     dayCycleTime = Number.isFinite(data.dayCycleTime) ? Math.max(0, data.dayCycleTime) % DAY_CYCLE_SECONDS : 0;
+    moonCycleTime = Number.isFinite(data.moonCycleTime) ? Math.max(0, data.moonCycleTime) % LUNAR_CYCLE_SECONDS : 0;
+    wetLevel = data.wetLevel && data.wetLevel.active ? data.wetLevel : null;
     difficulty = normalizeDifficulty(data.difficulty);
     fruitPending = data.fruitPending === true;
     fruitTree = data.fruitTree && Number.isFinite(data.fruitTree.x) && Number.isFinite(data.fruitTree.y)
@@ -363,6 +577,11 @@ function removeObj(b) { if (b.obj) { scene.remove(b.obj); disposeObj(b.obj); b.o
 function startRoom() {
   room++;
   clearObjects();
+  const waterTraits = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === 'water').length;
+  const wetChance = clamp(0.1 + waterTraits * 0.2, 0.1, 0.85);
+  wetLevel = Math.random() < wetChance
+    ? { active: true, riverX: rand(7, WORLD_W / 40 - 7), waterfall: Math.random() < 0.55, waterfallX: rand(5, WORLD_W / 40 - 5) }
+    : null;
   platforms = [{ x: 0, y: 500, w: WORLD_W, h: 40 }];
   if (fruitPending && !fruitTree) {
     fruitTree = { x: 520, y: 365, age: 0, fall: 0, fallen: false };
@@ -533,18 +752,31 @@ function hurtPlayer(from, dmg = 1) {
 
 function updateFruit(dt) {
   if (!fruitTree) return;
-  fruitTree.age += dt;
-  if (fruitTree.age >= 6) {
+  fruitTree.age = Math.min(60, fruitTree.age + dt);
+  if (fruitTree.age >= 60) {
     fruitTree.fall += dt;
-    fruitTree.y = Math.min(472, 365 + fruitTree.fall * 120);
-    fruitTree.fallen = fruitTree.y >= 472;
+    fruitTree.y = Math.min(492, 365 + fruitTree.fall * 150);
+    fruitTree.fallen = fruitTree.y >= 492;
   }
   if (fruitRig) {
     fruitRig.fruit.position.y = wy(fruitTree.y);
     fruitRig.stem.position.y = wy(fruitTree.y) + 0.1;
-    const scale = 0.04 + Math.min(1, fruitTree.age / 6) * 0.04;
+    const progress = clamp((fruitTree.age - 48) / 12, 0, 1);
+    const scale = 0.06 + progress * 0.12;
     fruitRig.fruit.scale.setScalar(scale);
-    fruitRig.stem.visible = !fruitTree.fallen;
+    fruitRig.stem.visible = fruitTree.age < 60 && !fruitTree.fallen;
+    const flowerGrowth = clamp(fruitTree.age / 8, 0, 1);
+    fruitRig.petals.forEach((petal, i) => {
+      const drop = clamp((fruitTree.age - 46) / 7, 0, 1);
+      petal.visible = !fruitTree.fallen && drop < 1;
+      const angle = i * Math.PI * 2 / fruitRig.petals.length;
+      petal.position.set(
+        wx(fruitTree.x) + Math.cos(angle) * (0.03 + flowerGrowth * 0.08 + drop * 0.5),
+        wy(fruitTree.y) + 0.1 - drop * (0.35 + i * 0.04),
+        0.25 + Math.sin(angle) * flowerGrowth * 0.08,
+      );
+      petal.scale.setScalar((0.02 + flowerGrowth * 0.07) * (1 - drop * 0.5));
+    });
   }
   if (fruitTree.fallen && overlap(player, { x: fruitTree.x - 12, y: fruitTree.y - 12, w: 24, h: 24 })) {
     const heal = Math.max(1, Math.floor(stats.maxHp / 5));
@@ -713,14 +945,21 @@ function updatePlay(dt) {
   pshots.filter(b => b.dead).forEach(removeObj); pshots = pshots.filter(b => !b.dead);
 
   let bossDied = false;
-  for (const e of enemies) if (e.hp <= 0) {
+  const deathQueue = enemies.filter(e => e.hp <= 0), processedDeaths = new Set();
+  while (deathQueue.length) {
+    const e = deathQueue.shift();
+    if (processedDeaths.has(e) || e.hp > 0) continue;
+    processedDeaths.add(e);
     burst(e.x + e.w / 2, e.y + e.h / 2, e.kind === 'boss' ? '#ffd54f' : '#7e57c2', e.kind === 'boss' ? 40 : 14);
     Snd.play(e.kind === 'boss' ? 'bossKill' : 'kill');
     if (e.kind === 'boss') { bossDied = true; run.bosses++; shake = 14; }
     if (s.spread && e.poisT > 0) for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 160) poison(o);
     if (s.cinder && e.burnT > 0) {
       ring(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 130, 0.35); burst(e.x + e.w / 2, e.y + e.h / 2, '#ff8a2a', 18);
-      for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 130) { o.hp -= 2; o.flash = 0.1; ignite(o); }
+      for (const o of enemies) if (o !== e && o.hp > 0 && Math.hypot(o.x - e.x, o.y - e.y) < 130) {
+        o.hp -= 2; o.flash = 0.1; ignite(o);
+        if (o.hp <= 0) deathQueue.push(o);
+      }
     }
     if (s.lifesteal) p.hp = Math.min(s.maxHp, p.hp + 0.5);
     removeRig(e);
@@ -732,7 +971,8 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; choice = null; fruitPending = false; fruitTree = null;
+  run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; moonCycleTime = DAY_CYCLE_SECONDS * 4;
+  choice = null; fruitPending = false; fruitTree = null; wetLevel = null;
 }
 function beginGame() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nov tek se kljub temu začne */ }
@@ -830,30 +1070,40 @@ function drawPauseSynergies() {
     ui.textAlign = 'center';
   }
 }
-function treeGroups() {
-  return Object.keys(DIMENSIONS).map(key => ({
-    key,
-    traits: TRAITS.filter(t => t.dimension === key).sort((a, b) => traitTier(a) - traitTier(b)),
-  }));
-}
 function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
-  ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace'; ui.fillText('Štiri smeri se prepletajo; svetli robovi so odklenjeni, zelena označuje izbrane, črtica levo nišo. Kolesce / ↑ ↓ za pomik.', W / 2, 63);
-  const groups = treeGroups(), nodeTop = 110, rowHeight = 25, maxNodes = Math.max(...groups.map(g => g.traits.length));
-  const contentBottom = nodeTop + maxNodes * rowHeight + 4;
-  treeScroll = clamp(treeScroll, 0, Math.max(0, contentBottom - 488));
+  ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
+  ui.fillText('Od začetne sluzi se veje navzven; barva vozlišča označuje nišo, povezave pa pogoje za odklep.', W / 2, 62);
   treeNodeBoxes = [];
-  ui.save(); ui.beginPath(); ui.rect(0, 78, W, 410); ui.clip();
+  const center = { x: W / 2, y: 274 };
+  const sector = { body: -Math.PI / 2, movement: 0, offense: Math.PI / 2, survival: Math.PI };
   const positions = new Map();
-  groups.forEach((g, col) => {
-    const x = 10 + col * 237, width = 228;
-    ui.fillStyle = 'rgba(22,27,44,.72)'; ui.fillRect(x, 82, width, 406);
-    ui.strokeStyle = DIMENSIONS[g.key].color; ui.lineWidth = 1.5; ui.strokeRect(x, 82, width, 406);
-    ui.textAlign = 'left'; ui.fillStyle = DIMENSIONS[g.key].color; ui.font = 'bold 11px monospace';
-    ui.fillText(DIMENSIONS[g.key].name.toUpperCase(), x + 7, 100);
-    g.traits.forEach((trait, index) => positions.set(trait.id, { trait, x: x + 6, y: nodeTop + index * rowHeight - treeScroll, w: width - 12, h: 20 }));
-  });
+  for (const [dimension, angle] of Object.entries(sector)) {
+    const roots = TRAITS.filter(t => t.dimension === dimension && traitRequires(t).length === 0);
+    roots.forEach((trait, i) => {
+      const lane = Math.floor(i / 4), slot = i % 4;
+      positions.set(trait.id, { trait, angle: angle + (slot - 1.5) * 0.42, radius: 38 + lane * 20 });
+    });
+  }
+  for (const trait of TRAITS.filter(t => traitRequires(t).length).sort((a, b) => traitTier(a) - traitTier(b))) {
+    const parents = traitRequires(trait).map(id => positions.get(id)).filter(Boolean);
+    if (!parents.length) continue;
+    const avgX = parents.reduce((sum, p) => sum + Math.cos(p.angle), 0);
+    const avgY = parents.reduce((sum, p) => sum + Math.sin(p.angle), 0);
+    const angleBase = Math.atan2(avgY, avgX);
+    const parentIds = traitRequires(trait).join(',');
+    const siblings = TRAITS.filter(t => t.dimension === trait.dimension && traitRequires(t).join(',') === parentIds);
+    const siblingIndex = siblings.indexOf(trait);
+    const spread = (siblingIndex - (siblings.length - 1) / 2) * 0.3;
+    positions.set(trait.id, { trait, angle: angleBase + spread, radius: Math.max(...parents.map(p => p.radius)) + 27 });
+  }
+  const maxRadius = Math.max(...[...positions.values()].map(p => p.radius));
+  const fit = Math.min(1, 170 / maxRadius);
+  for (const p of positions.values()) {
+    p.x = center.x + Math.cos(p.angle) * p.radius * fit;
+    p.y = center.y + Math.sin(p.angle) * p.radius * fit;
+  }
   for (const trait of TRAITS) {
     const to = positions.get(trait.id);
     if (!to) continue;
@@ -861,31 +1111,42 @@ function drawTree() {
       const from = positions.get(requiredId);
       if (!from) continue;
       ui.beginPath();
-      ui.moveTo(from.x + from.w / 2, from.y + from.h);
-      ui.bezierCurveTo(from.x + from.w / 2, from.y + from.h + 12, to.x + to.w / 2, to.y - 12, to.x + to.w / 2, to.y);
-      ui.strokeStyle = owned.has(requiredId) && owned.has(trait.id) ? '#9be15d' : 'rgba(178,190,216,.18)';
+      ui.moveTo(from.x, from.y);
+      ui.lineTo(to.x, to.y);
+      ui.strokeStyle = owned.has(requiredId) && owned.has(trait.id) ? '#9be15d' : owned.has(requiredId) ? NICHES[trait.niche].color + '99' : 'rgba(178,190,216,.2)';
       ui.lineWidth = owned.has(requiredId) && owned.has(trait.id) ? 2 : 1;
       ui.stroke();
     }
   }
-  for (const g of groups) for (const trait of g.traits) {
-    const pos = positions.get(trait.id), state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
-    ui.fillStyle = acquired ? '#31533c' : unlocked ? '#29344b' : '#171b2a';
-    ui.fillRect(pos.x, pos.y, pos.w, pos.h);
-    ui.strokeStyle = acquired ? '#9be15d' : unlocked ? DIMENSIONS[g.key].color : '#41485a'; ui.lineWidth = 1; ui.strokeRect(pos.x, pos.y, pos.w, pos.h);
-    ui.fillStyle = NICHES[trait.niche].color; ui.fillRect(pos.x + 1, pos.y + 1, 3, pos.h - 2);
-    ui.fillStyle = acquired ? '#c8ffc0' : unlocked ? '#e5e9f4' : '#778096';
-    ui.font = '9px monospace'; ui.textAlign = 'left'; ui.fillText(trait.name, pos.x + 8, pos.y + 13);
-    ui.textAlign = 'right'; ui.fillText(acquired ? '✓' : unlocked ? '○' : '·', pos.x + pos.w - 6, pos.y + 13);
-    treeNodeBoxes.push({ trait, x: pos.x, y: pos.y, w: pos.w, h: pos.h });
+  ui.beginPath(); ui.arc(center.x, center.y, 22, 0, Math.PI * 2);
+  ui.fillStyle = '#20273a'; ui.fill(); ui.strokeStyle = '#ffd54f'; ui.lineWidth = 2; ui.stroke();
+  ui.fillStyle = '#ffd54f'; ui.font = 'bold 10px monospace'; ui.textAlign = 'center'; ui.fillText('SLUZ', center.x, center.y + 3);
+  for (const { trait, x, y } of positions.values()) {
+    const state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
+    const color = NICHES[trait.niche].color;
+    ui.beginPath(); ui.arc(x, y, 7, 0, Math.PI * 2);
+    ui.fillStyle = acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a';
+    ui.fill();
+    ui.strokeStyle = acquired ? '#dcffd2' : unlocked ? '#fff' : state === 'blocked' ? '#b76572' : color + '88';
+    ui.lineWidth = acquired || unlocked ? 2 : 1; ui.stroke();
+    if (acquired) {
+      ui.fillStyle = '#17301b'; ui.font = 'bold 8px monospace'; ui.fillText('✓', x, y + 3);
+    }
+    treeNodeBoxes.push({ trait, x: x - 10, y: y - 10, w: 20, h: 20 });
   }
-  ui.restore();
+  for (const [dimension, angle] of Object.entries(sector)) {
+    const x = center.x + Math.cos(angle) * 190, y = center.y + Math.sin(angle) * 190;
+    ui.fillStyle = DIMENSIONS[dimension].color; ui.font = 'bold 10px monospace'; ui.textAlign = 'center';
+    ui.fillText(DIMENSIONS[dimension].short.toUpperCase(), x, y);
+  }
+  ui.fillStyle = '#99a5bc'; ui.font = '10px monospace';
+  ui.fillText('Štiri razvojne smeri: telo · gibanje · boj · preživetje', W / 2, 490);
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
   ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
   if (treeHoverTrait) {
-    const tipW = 360, tipH = 156;
-    const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 78, H - tipH - 38);
+    const tipW = 320, tipH = 150;
+    const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 76, H - tipH - 38);
     ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
     ui.strokeStyle = NICHES[treeHoverTrait.niche].color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
     ui.textAlign = 'left'; ui.fillStyle = NICHES[treeHoverTrait.niche].color; ui.font = 'bold 14px monospace'; ui.fillText(treeHoverTrait.name, x + 12, y + 22);
@@ -931,12 +1192,10 @@ function updateMenu() {
   }
   else if (mode === 'pause') {
     if (hit('KeyP', 'Escape', 'Enter')) resumeGame();
-    else if (hit('KeyT')) { mode = 'tree'; treeScroll = 0; }
+    else if (hit('KeyT')) mode = 'tree';
     else if (hit('KeyS')) saveGame();
   } else if (mode === 'tree') {
     if (hit('Escape', 'Backspace', 'KeyT')) mode = 'pause';
-    else if (hit('ArrowDown')) treeScroll += 55;
-    else if (hit('ArrowUp')) treeScroll = Math.max(0, treeScroll - 55);
   } else if (mode === 'synergy') {
     if (hit('Enter', 'Space', 'KeyJ')) advanceSynergyCard();
   }
@@ -944,7 +1203,7 @@ function updateMenu() {
 function resumeGame() { mode = 'play'; Snd.music(room % 5 === 0 ? 'boss' : 'game', room); }
 function pauseAction(index) {
   if (index === 0) resumeGame();
-  else if (index === 1) { mode = 'tree'; treeScroll = 0; }
+  else if (index === 1) mode = 'tree';
   else if (index === 2) saveGame();
   else if (index === 3) { saveBest(room - 1); toMenu(); }
 }
@@ -1013,7 +1272,7 @@ uic.addEventListener('mousemove', e => {
     if (mouse.x >= x && mouse.x <= x + 162 && mouse.y >= y && mouse.y <= y + 31) pauseSynHover = i;
   });
   treeHoverTrait = mode === 'tree'
-    ? (treeNodeBoxes.find(box => box.y >= 78 && box.y + box.h <= 488 && mouse.x >= box.x && mouse.x <= box.x + box.w && mouse.y >= box.y && mouse.y <= box.y + box.h) || {}).trait || null
+    ? (treeNodeBoxes.find(box => box.y >= 68 && box.y + box.h <= 488 && mouse.x >= box.x && mouse.x <= box.x + box.w && mouse.y >= box.y && mouse.y <= box.y + box.h) || {}).trait || null
     : null;
 });
 uic.addEventListener('click', e => {
@@ -1042,11 +1301,7 @@ uic.addEventListener('click', e => {
   const i = hoverIndex();
   if (i >= 0) pick(choice.options[i]);
 });
-uic.addEventListener('wheel', e => {
-  if (mode !== 'tree') return;
-  e.preventDefault();
-  treeScroll = Math.max(0, treeScroll + Math.sign(e.deltaY) * 55);
-}, { passive: false });
+
 function updateChoose(dt) {
   choiceCool -= dt;
   if (!choice) return;
@@ -1118,8 +1373,12 @@ function animateEnemies(dt, t) {
     const mv = e.ground && Math.abs(e.vx) > 10 ? 1 : 0;
     e.ph += dt * 10 * mv;
     rig.legs.forEach((l, i) => { l.rotation.z = e.kind === 'hopper' ? (e.ground ? 0 : 0.8) : Math.sin(e.ph + (i % 2) * Math.PI) * 0.6; });
+    rig.segments.forEach((segment, i) => {
+      segment.position.y = segment.userData.baseY + Math.sin(t * 7 - i * 0.75) * 0.035 * mv;
+    });
     if (e.kind === 'hopper') { const st = clamp(-e.vy / 1800, -0.15, 0.15); rig.model.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5); }
     if (rig.head) rig.head.rotation.z = Math.sin(t * 2 + e.t) * 0.12 - (e.shootT < 0.4 ? 0.4 : 0);
+    if (rig.stalk) rig.stalk.rotation.z = -0.24 + Math.sin(t * 2.2 + e.t) * 0.06;
     if (rig.sac) rig.sac.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(t * 5 + e.t);
     const charging = e.kind === 'boss' && e.chargeT > 0.48;
     setGlow(rig, charging ? '#ffd24a' : e.chillT > 0 && !(e.flash > 0) && !(e.burnT > 0) ? '#8fd8ff' : e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff',
@@ -1173,8 +1432,11 @@ function drawHUD() {
   ui.textAlign = 'right'; ui.font = '13px monospace'; ui.fillStyle = '#9be15d';
   ui.fillText(`Rekord: stopnja ${best.room}`, W - 16, 24);
   ui.fillStyle = '#7f8aa8'; ui.fillText('P – premor · M – zvok', W - 16, 42);
+  const moonPhase = (moonCycleTime % LUNAR_CYCLE_SECONDS) / LUNAR_CYCLE_SECONDS;
+  const moonPhaseName = moonPhase < 0.125 || moonPhase >= 0.875 ? 'MLAJ' :
+    moonPhase < 0.375 ? 'PRVI KRAJEC' : moonPhase < 0.625 ? 'POLNA LUNA' : 'ZADNJI KRAJEC';
   ui.fillStyle = dayNightLevel > 0.5 ? '#b9c9ff' : '#ffe08a';
-  ui.fillText(dayNightLevel > 0.5 ? 'NOČ' : 'DAN', W - 16, 60);
+  ui.fillText(`${dayNightLevel > 0.5 ? 'NOČ' : 'DAN'} · ${moonPhaseName}`, W - 16, 60);
   ui.textAlign = 'left';
   const hpN = Math.ceil(stats.maxHp), rows = Math.ceil(hpN / 10), off = (rows - 1) * 19;
   for (let i = 0; i < hpN; i++) {
@@ -1279,7 +1541,9 @@ function frame(now) {
   hitstop -= rawDt; time += rawDt; toastT -= rawDt;
   if (mode === 'play') {
     dayCycleTime = (dayCycleTime + rawDt) % DAY_CYCLE_SECONDS;
+    moonCycleTime = (moonCycleTime + rawDt) % LUNAR_CYCLE_SECONDS;
     updateDayNight(rawDt);
+    updateWetScenery(rawDt);
     if (hit('KeyP', 'Escape')) { mode = 'pause'; saveNotice = ''; Snd.music('menu'); }
     else updatePlay(dt);
   }
