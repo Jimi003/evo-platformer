@@ -1,5 +1,5 @@
 'use strict';
-const W = 960, H = 540, G = 1500, RW = 1280, RH = 720;
+const W = 960, WORLD_W = 1440, H = 540, G = 1500, RW = 1280, RH = 720;
 const wx = x => x / 40, wy = y => (540 - y) / 40;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -37,7 +37,7 @@ const THEMES = [
   { sky: ['#2a4a7a', '#e8f4ff'], fog: '#9ab8e0', ground: '#56688a', top: '#e8f4ff', far: '#6a86b8', far2: '#8aa6d0', far3: '#c0d4f0', tree: '#8ab0c8', tree2: '#e8f4ff', glow: '#ffffff', style: 'pine', stars: false, accent: '#9ad8ff' },
   { sky: ['#10061f', '#7a2a9a'], fog: '#3a1a5a', ground: '#2e2244', top: '#b455d6', far: '#241044', far2: '#4a2a7a', far3: '#7a3a9a', tree: '#5a2a8a', tree2: '#e29bff', glow: '#e29bff', style: 'mushroom', stars: true, accent: '#7affd0' },
 ];
-let roomGroup = null, roomMats = [], fireflies = [], skyTex = null;
+let roomGroup = null, roomMats = [], fireflies = [], skyTex = null, fruitRig = null;
 function skyTexture(a, b) {
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
@@ -47,6 +47,7 @@ function skyTexture(a, b) {
 }
 function buildRoomScene() {
   if (roomGroup) { scene.remove(roomGroup); roomMats.forEach(m => m.dispose()); if (skyTex) skyTex.dispose(); }
+  fruitRig = null;
   roomMats = []; fireflies = [];
   const th = THEMES[(room - 1) % THEMES.length];
   const M = (c, o) => { const m = stdMat(c, o); roomMats.push(m); return m; };
@@ -65,17 +66,20 @@ function buildRoomScene() {
       mk(roomGroup, GEO.ico, rockMat2, [(p.x + p.w / 2) / 40 + 0.25, wy(p.y) - 0.1, 0.5], [0.25, 0.18, 0.25], [p.seed * 3, 1, 0]);
       return;
     }
-    const ground = i === 0, w = ground ? 46 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
-    const cx = ground ? 12 : (p.x + p.w / 2) / 40, top = wy(p.y);
+    const ground = i === 0, w = ground ? WORLD_W / 40 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
+    const cx = ground ? WORLD_W / 80 : (p.x + p.w / 2) / 40, top = wy(p.y);
     mk(roomGroup, GEO.box, groundM, [cx, top - h / 2, 0], [w, h, d]).receiveShadow = true;
     const strip = mk(roomGroup, GEO.box, ground ? M(th.ground) : topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
     if (!ground) {
-      const under = mk(roomGroup, GEO.cone, rockM, [cx, top - h - 0.45, 0], [w * 0.38, 1.0, 1.3], [Math.PI, 0, 0]);
-      under.castShadow = false;
+      const undersideM = M(th.far2);
+      for (const side of [-1, 1]) {
+        const under = mk(roomGroup, GEO.cone, undersideM, [cx + side * w * 0.28, top - h - 0.2, -2], [Math.max(0.18, w * 0.12), 0.45, 0.65], [Math.PI, 0, side * 0.08]);
+        under.castShadow = false;
+      }
     }
-    const n = ground ? 14 : Math.max(1, Math.round(w / 1.8));
+    const n = ground ? 20 : Math.max(1, Math.round(w / 1.8));
     for (let k = 0; k < n; k++) {
-      const x = ground ? rand(-4, 28) : cx + rand(-w / 2 + 0.2, w / 2 - 0.2), z = ground ? rand(-4.5, -1.2) : rand(-1.2, 1.2);
+      const x = ground ? rand(-2, WORLD_W / 40 + 2) : cx + rand(-w / 2 + 0.2, w / 2 - 0.2), z = ground ? rand(-4.5, -1.2) : rand(-1.2, 1.2);
       const r = Math.random();
       if (r < 0.45) spike(roomGroup, topM, [x, top, z], 0.07, rand(0.2, 0.45), [rand(-.3, .3), 0, rand(-.3, .3)]);
       else if (r < 0.75) mk(roomGroup, GEO.sph, rockM, [x, top + 0.1, z], [rand(.12, .3), rand(.1, .22), rand(.12, .3)]);
@@ -83,9 +87,9 @@ function buildRoomScene() {
     }
   });
   // tla za drevesi, da ne lebdijo v zraku
-  const backM = M(th.ground); backM.color.multiplyScalar(0.85);
-  mk(roomGroup, GEO.box, backM, [12, 0.5, -37], [160, 1, 64]).receiveShadow = true;
-  const backTop = M(th.top); backTop.color.multiplyScalar(0.7);
+  const backM = M(th.ground); backM.color.multiplyScalar(1.25);
+  mk(roomGroup, GEO.box, backM, [WORLD_W / 80, 0.5, -37], [160, 1, 64]).receiveShadow = false;
+  const backTop = M(th.top); backTop.color.multiplyScalar(0.9);
   mk(roomGroup, GEO.box, backTop, [12, 0.96, -37], [160, 0.1, 64]).castShadow = false;
   // gorske plasti v različnih barvah
   [[th.far3, -66, 0.9, 9, 20], [th.far2, -54, 0.8, 8, 16], [th.far, -42, 0.7, 6, 13]].forEach(([c, z, hk, r0, r1]) => {
@@ -95,7 +99,7 @@ function buildRoomScene() {
   // oblaki
   const cloudM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: th.stars ? 0.1 : 0.3, depthWrite: false }); roomMats.push(cloudM);
   for (let i = 0; i < 9; i++) {
-    const cx = rand(-10, 34), cy = rand(9, 17), cz = rand(-60, -30);
+    const cx = rand(-10, WORLD_W / 40 + 10), cy = rand(9, 17), cz = rand(-60, -30);
     for (let k = 0; k < 4; k++) mk(roomGroup, GEO.sph, cloudM, [cx + k * 2.2 - 3, cy + (k % 2) * 0.7, cz], [rand(2.5, 4), rand(1.2, 1.8), 1.5]).castShadow = false;
   }
   if (th.stars) {
@@ -104,7 +108,7 @@ function buildRoomScene() {
   }
   const t2M = M(th.tree2), flowerM = glowMat(th.accent, 0.6); roomMats.push(flowerM);
   for (let i = 0; i < 34; i++) {
-    const x = rand(-8, 32), z = rand(-24, -6.5), s = rand(0.8, 1.7), by = 1.0, alt = Math.random() < 0.3;
+    const x = rand(-8, WORLD_W / 40 + 8), z = rand(-24, -6.5), s = rand(0.8, 1.7), by = 1.0, alt = Math.random() < 0.3;
     const cm = alt ? t2M : treeM;
     if (th.style === 'pine' || (th.style === 'dead' && false)) {
       mk(roomGroup, GEO.cyl, trunkM, [x, by + 0.6 * s, z], [0.18 * s, 1.2 * s, 0.18 * s]).castShadow = false;
@@ -124,25 +128,43 @@ function buildRoomScene() {
   }
   // cvetlice / travne šopke
   for (let i = 0; i < 30; i++) {
-    const x = rand(-6, 30), z = rand(-9, -5.2);
+    const x = rand(-6, WORLD_W / 40 + 6), z = rand(-9, -5.2);
     mk(roomGroup, GEO.sph, i % 3 ? flowerM : t2M, [x, 1.05, z], [0.14, 0.1, 0.14]).castShadow = false;
   }
-  const moon = mk(roomGroup, GEO.sph, glowM, [22, 15, -70], [4, 4, 4]); moon.castShadow = false;
+  const moon = mk(roomGroup, GEO.sph, glowM, [WORLD_W / 80 + 4, 15, -70], [4, 4, 4]); moon.castShadow = false;
   const haloM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.12, depthWrite: false }); roomMats.push(haloM);
-  mk(roomGroup, GEO.sph, haloM, [22, 15, -70.5], [9, 9, 1]).castShadow = false;
+  mk(roomGroup, GEO.sph, haloM, [WORLD_W / 80 + 4, 15, -70.5], [9, 9, 1]).castShadow = false;
   const shaftM = new THREE.MeshBasicMaterial({ color: th.glow, transparent: true, opacity: 0.035, depthWrite: false, side: THREE.DoubleSide }); roomMats.push(shaftM);
   for (let i = 0; i < 5; i++) { const s = mk(roomGroup, GEO.cone, shaftM, [rand(0, 24), 9, rand(-10, -4)], [rand(1.5, 3), 20, 1.5], [0, 0, rand(-0.2, 0.2)]); s.rotation.x = Math.PI; s.castShadow = false; }
   const capM = glowMat(th.glow, 0.8); roomMats.push(capM);
   for (let i = 0; i < 14; i++) {
-    const x = rand(-3, 27), z = rand(-5, -1.5), h = rand(0.15, 0.4);
+    const x = rand(-3, WORLD_W / 40 + 3), z = rand(-5, -1.5), h = rand(0.15, 0.4);
     mk(roomGroup, GEO.cyl, trunkM, [x, 1 + h / 2, z], [0.03, h, 0.03]).castShadow = false;
     mk(roomGroup, GEO.sph, capM, [x, 1 + h, z], [h * 0.6, h * 0.35, h * 0.6]).castShadow = false;
   }
   for (let i = 0; i < 34; i++) {
-    const f = mk(roomGroup, GEO.sph, glowM, [rand(-2, 26), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
+    const f = mk(roomGroup, GEO.sph, glowM, [rand(-2, WORLD_W / 40 + 2), rand(1.5, 11), rand(-6, 3)], [0.05, 0.05, 0.05]);
     f.castShadow = false; f.userData = { bx: f.position.x, by: f.position.y, ph: rand(0, 6) };
     fireflies.push(f);
   }
+  if (fruitTree) addFruitTreeToRoom();
+}
+function addFruitTreeToRoom() {
+  const treeM = stdMat('#76502d'), leafM = stdMat('#4f9b4e'), fruitM = glowMat('#ff6d36', 0.8), flowerM = stdMat('#ffd36a');
+  roomMats.push(treeM, leafM, fruitM, flowerM);
+  const group = new THREE.Group(); roomGroup.add(group);
+  const x = wx(fruitTree.x), ground = wy(500);
+  mk(group, GEO.cyl, treeM, [x, ground + 1.15, -0.5], [0.24, 1.15, 0.22]);
+  for (const side of [-1, 1]) {
+    const branch = mk(group, GEO.cyl, treeM, [x + side * 0.22, ground + 2.45, -0.5], [0.09, 0.7, 0.09], [0, 0, side * 0.75]);
+    branch.castShadow = false;
+  }
+  for (const [dx, dy, size] of [[0, 3.1, 0.72], [-0.38, 2.85, 0.5], [0.4, 2.85, 0.5]]) {
+    mk(group, GEO.sph, leafM, [x + dx, ground + dy, -0.55], [size, size * 0.75, size * 0.42]).castShadow = false;
+  }
+  const fruit = mk(group, GEO.sph, fruitM, [x, wy(fruitTree.y), 0.25], [0.08, 0.08, 0.08]);
+  const stem = mk(group, GEO.cone, flowerM, [x, wy(fruitTree.y) + 0.1, 0.25], [0.035, 0.08, 0.035]);
+  fruitRig = { group, fruit, stem };
 }
 
 // ---------- Delci in obrazi ----------
@@ -179,8 +201,11 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
 let run = { revived: false, bosses: 0 }, points = 0;
 let difficulty = 'hard';
-try { difficulty = localStorage.getItem('evo-difficulty') === 'easy' ? 'easy' : 'hard'; } catch (e) { /* privzeto težja težavnost */ }
+function normalizeDifficulty(value) { return value === 'easy' || value === 'challenge' ? value : 'hard'; }
+function difficultyLabel() { return difficulty === 'easy' ? 'lažja' : difficulty === 'challenge' ? 'izzivna' : 'težja'; }
+try { difficulty = normalizeDifficulty(localStorage.getItem('evo-difficulty')); } catch (e) { /* privzeto težja težavnost */ }
 let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null;
+let fruitPending = false, fruitTree = null;
 const showcase = () => mode === 'choose' || mode === 'menu';
 // Rekord se shrani v brskalnik (localStorage).
 let best = { room: 0, bosses: 0, build: '' };
@@ -211,7 +236,7 @@ function saveGame() {
   const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
-    room, difficulty, owned: [...owned], extras, run,
+    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree,
     player: savedPlayer,
     platforms,
     enemies: enemies.map(e => plain(e, ['rig'])),
@@ -239,9 +264,12 @@ function loadSavedGame() {
     stats = computeStats(owned, extras);
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
     room = data.room;
-    difficulty = data.difficulty === 'easy' ? 'easy' : 'hard';
-    platforms = data.platforms;
-    enemies = data.enemies;
+    difficulty = normalizeDifficulty(data.difficulty);
+    fruitPending = data.fruitPending === true;
+    fruitTree = data.fruitTree && Number.isFinite(data.fruitTree.x) && Number.isFinite(data.fruitTree.y)
+      ? Object.assign({ age: 0, fall: 0, fallen: false }, data.fruitTree) : null;
+    platforms = data.platforms.map(p => p.x === 0 && p.y === 500 ? Object.assign({}, p, { w: WORLD_W }) : p);
+    enemies = data.enemies.map(e => Object.assign({ chargeT: 0, chargeCd: 3, chargeDir: -1 }, e));
     player = Object.assign(newPlayer(), data.player, {
       atkHit: new Set((data.player.atkHit || []).map(i => enemies[i]).filter(Boolean)),
       dashHit: new Set((data.player.dashHit || []).map(i => enemies[i]).filter(Boolean)),
@@ -261,9 +289,11 @@ function loadSavedGame() {
 }
 function spawnEnemy(kind, x, y) {
   const sz = { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
-  const hp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
+  const baseHp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
+  const hp = baseHp * (difficulty === 'challenge' ? 1.2 : 1);
   const e = { kind, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
-    flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, chillT: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
+    flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, chargeT: 0, chargeCd: 3, chargeDir: -1,
+    poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, chillT: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
   enemies.push(e);
   return e;
 }
@@ -279,30 +309,35 @@ function removeObj(b) { if (b.obj) { scene.remove(b.obj); disposeObj(b.obj); b.o
 function startRoom() {
   room++;
   clearObjects();
-  platforms = [{ x: 0, y: 500, w: W, h: 40 }];
-  let prev = { x: 300 + rand(-100, 200), w: 160 };
-  [425, 350, 275].forEach((y, tier) => {
-    const n = tier === 0 ? 2 : 1 + Math.floor(Math.random() * 2);
-    for (let i = 0; i < n; i++) {
-      const w = rand(120, 210), x = clamp((i === 0 ? prev.x : rand(80, 760)) + rand(-130, 130), 30, W - w - 30);
-      platforms.push({ x, y, w, h: 16 });
-      if (i === 0) prev = { x, w };
+  platforms = [{ x: 0, y: 500, w: WORLD_W, h: 40 }];
+  if (fruitPending && !fruitTree) {
+    fruitTree = { x: 520, y: 365, age: 0, fall: 0, fallen: false };
+    fruitPending = false;
+  }
+  let pathX = 160;
+  [425, 350, 400, 310, 380].forEach((y, tier) => {
+    const w = rand(140, 220), x = clamp(pathX + rand(-55, 55), 30, WORLD_W - w - 30);
+    platforms.push({ x, y: y + (room % 2 ? rand(-18, 18) : 0), w, h: 16 });
+    if (tier === 1 || tier === 3) {
+      const altX = clamp(x + rand(100, 170), 30, WORLD_W - 170);
+      platforms.push({ x: altX, y: y + rand(30, 75), w: rand(110, 170), h: 16 });
     }
+    pathX += rand(220, 280);
   });
-  const nRocks = 2 + Math.floor(Math.random() * 3);
+  const nRocks = 3 + Math.floor(Math.random() * 4);
   for (let i = 0; i < nRocks; i++) {
-    const w = rand(38, 62), x = rand(170, W - 120);
+    const w = rand(38, 62), x = rand(170, WORLD_W - 120);
     if (!platforms.some(q => q.rock && Math.abs(q.x - x) < 130)) platforms.push({ x, y: 500 - 26, w, h: 26, rock: true, seed: Math.random() });
   }
   const isBoss = room % 5 === 0;
-  if (isBoss) spawnEnemy('boss', 780, 300);
+  if (isBoss) spawnEnemy('boss', WORLD_W - 240, 300);
   const count = isBoss ? 2 : 2 + room;
   for (let i = 0; i < count; i++) {
     const kinds = ['walker'];
     if (room >= 2) kinds.push('hopper', 'spitter');
     if (room >= 3) kinds.push('armored');
     const kind = room === 3 && i === 0 ? 'armored' : room === 2 && i === 0 ? 'spitter' : kinds[Math.floor(Math.random() * kinds.length)];
-    spawnEnemy(kind, rand(400, 900), 300);
+    spawnEnemy(kind, rand(280, WORLD_W - 120), 300);
   }
   const keep = player ? player.hp : stats.maxHp;
   player = newPlayer();
@@ -318,7 +353,7 @@ function overlap(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y 
 function moveBody(b, dt) {
   b.x += b.vx * dt;
   for (const p of platforms) if (p.h > 20 && overlap(b, p)) { b.x = b.vx > 0 ? p.x - b.w : p.x + p.w; b.vx = 0; }
-  b.x = Math.max(0, Math.min(W - b.w, b.x));
+  b.x = Math.max(0, Math.min(WORLD_W - b.w, b.x));
   const prevBottom = b.y + b.h;
   b.y += b.vy * dt; b.ground = false;
   for (const p of platforms) {
@@ -382,11 +417,11 @@ function useActive(id, slot) {
     for (let i = 0; i < 12; i++) { const ang = i / 12 * Math.PI * 2; pshots.push({ x: cx, y: cy, vx: Math.cos(ang) * 480, vy: Math.sin(ang) * 480, dmg: 1.3, quill: true }); }
     ring(cx, cy, a.color, 70, 0.3);
   } else if (id === 'miasma') {
-    ring(cx, cy, a.color, 300, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
-    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 300) { e.poisT = Math.max(e.poisT, 5); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 2); e.hp -= 1; e.flash = 0.1; }
+    ring(cx, cy, a.color, 260, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
+    for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.poisT = Math.max(e.poisT, 3); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 1.25); e.hp -= 0.5; e.flash = 0.1; }
   } else if (id === 'epidemic') {
-    ring(cx, cy, a.color, 700, 0.8); shake = 6;
-    for (const e of enemies) { e.poisT = 7; e.poisDps = Math.max(s.poison, 1) * 1.5; e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
+    ring(cx, cy, a.color, 520, 0.8); shake = 6;
+    for (const e of enemies) { e.poisT = 4; e.poisDps = Math.max(s.poison, 1); e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
   } else if (id === 'torrent') {
     shake = 4; ring(cx + p.face * 60, cy, a.color, 120, 0.4);
     for (let i = 0; i < 14; i++) burst(cx + p.face * (20 + i * 22), cy + rand(-20, 24), i % 2 ? '#3b9bff' : '#bfeaff', 2);
@@ -432,12 +467,38 @@ function hurtPlayer(from, dmg = 1) {
   if (p.inv > 0) return;
   if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('bastion'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
   Snd.play('hurt');
+  if (difficulty === 'challenge' && (from.kind || from.enemyShot)) dmg *= 1.2;
   p.hp -= dmg; p.inv = stats.invTime; p.hurtT = 0.2; hitstop = 0.06;
   p.vx = (p.x < from.x ? -1 : 1) * 260; p.vy = -260; shake = 6; burst(p.x + 14, p.y + 18, '#ffffff');
   if (p.hp <= 0) {
     if (stats.revive && !run.revived) {
       run.revived = true; p.hp = Math.ceil(stats.maxHp / 2); p.inv = 2; burst(p.x + 14, p.y + 18, '#ffd54f', 30); toast('Vstal si od mrtvih!', 1.5); Snd.play('revive');
     } else die();
+  }
+}
+
+function updateFruit(dt) {
+  if (!fruitTree) return;
+  fruitTree.age += dt;
+  if (fruitTree.age >= 6) {
+    fruitTree.fall += dt;
+    fruitTree.y = Math.min(472, 365 + fruitTree.fall * 120);
+    fruitTree.fallen = fruitTree.y >= 472;
+  }
+  if (fruitRig) {
+    fruitRig.fruit.position.y = wy(fruitTree.y);
+    fruitRig.stem.position.y = wy(fruitTree.y) + 0.1;
+    const scale = 0.04 + Math.min(1, fruitTree.age / 6) * 0.04;
+    fruitRig.fruit.scale.setScalar(scale);
+    fruitRig.stem.visible = !fruitTree.fallen;
+  }
+  if (fruitTree.fallen && overlap(player, { x: fruitTree.x - 12, y: fruitTree.y - 12, w: 24, h: 24 })) {
+    const heal = Math.max(1, Math.floor(stats.maxHp / 5));
+    player.hp = Math.min(stats.maxHp, player.hp + heal);
+    fruitTree = null;
+    if (fruitRig) { fruitRig.fruit.visible = false; fruitRig.stem.visible = false; }
+    toast(`Sadež ti povrne ${heal} zdravja.`, 2);
+    Snd.play('pick');
   }
 }
 
@@ -480,6 +541,7 @@ function updatePlay(dt) {
   if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; Snd.play('spit'); pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
   const vy0 = p.vy, wasG = p.ground;
   moveBody(p, dt);
+  updateFruit(dt);
   if (p.ground && !wasG) {
     if (p.meteor && p.meteorUp <= 0) { p.meteor = false; blast(p.x + 14, p.y + 36, 190, 3 + s.dmg * 1.5, '#ffb347'); }
     else if (vy0 > 300) { burst(p.x + 14, p.y + 36, '#cfc6b0', 5); ring(p.x + 14, p.y + 36, '#ffffff', 28, 0.25); }
@@ -507,13 +569,32 @@ function updatePlay(dt) {
         const boss = e.kind === 'boss', rage = boss && e.hp < e.maxHp / 2;
         e.turnT -= dt;
         if (e.face !== e.dir && e.turnT <= 0) { e.face = e.dir; e.turnT = boss ? (rage ? 0.8 : 1.1) : 1.3; }
-        e.vx = e.face * (boss ? (rage ? 120 : 65) : 45);
+        e.vx = e.face * (boss ? (rage ? 100 : 55) : 45);
         if (boss) {
-          e.shootT -= dt;
-          if (e.shootT <= 0) {
-            e.shootT = rage ? 1.6 : 2.6;
-            const base = Math.atan2(p.y + p.h / 2 - e.y - 20, p.x + p.w / 2 - e.x - e.w / 2);
-            for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7 });
+          e.chargeCd -= dt;
+          if (e.chargeT > 0) {
+            e.chargeT = Math.max(0, e.chargeT - dt);
+            if (e.chargeT > 0.48) e.vx = 0;
+            else e.vx = e.chargeDir * (rage ? 280 : 235);
+            if (e.chargeT === 0) {
+              e.chargeCd = rage ? 5 : 6.5;
+              e.stunT = 0.65;
+              e.vx = 0;
+              for (const dir of [-1, 1]) shots.push({ x: e.x + e.w / 2, y: 492, vx: dir * 190, vy: 0, r: 8, enemyShot: true, wave: true, color: '#ffb347' });
+            }
+          } else if (e.chargeCd <= 0 && Math.abs(dx) < 520) {
+            e.chargeT = 1.05;
+            e.chargeDir = e.dir;
+            e.face = e.chargeDir;
+            e.vx = 0;
+          }
+          if (e.chargeT <= 0) {
+            e.shootT -= dt;
+            if (e.shootT <= 0) {
+              e.shootT = rage ? 1.6 : 2.6;
+              const base = Math.atan2(p.y + p.h / 2 - e.y - 20, p.x + p.w / 2 - e.x - e.w / 2);
+              for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7, enemyShot: true, color: '#ff6a5a' });
+            }
           }
         }
       } else if (e.kind === 'spitter') {
@@ -523,7 +604,7 @@ function updatePlay(dt) {
         if (e.shootT <= 0 && d < 520) {
           e.shootT = 2.2;
           const ang = Math.atan2(p.y + p.h / 2 - e.y, p.x + p.w / 2 - e.x);
-          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6 });
+          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6, enemyShot: true, color: '#c6ff00' });
         }
       } else {
         e.vx = e.dir * (e.kind === 'hopper' ? 90 : 70 + room * 4);
@@ -537,7 +618,7 @@ function updatePlay(dt) {
     const wantVx = e.vx;
     moveBody(e, dt);
     if (wantVx && e.vx === 0 && e.ground && e.kind !== 'boss' && e.kb <= 0 && e.stunT <= 0) e.vy = -470;
-    if (e.y > H + 50) { e.x = 700; e.y = 0; e.vy = 0; }
+    if (e.y > H + 50) { e.x = clamp(player.x + 450, 100, WORLD_W - 100); e.y = 0; e.vy = 0; }
     let dmg = (p.atkT > 0 && overlap(box, e) && !p.atkHit.has(e)) ? s.dmg + (p.dashT > 0 ? s.dashDmg : 0) : 0;
     const rammed = p.dashT > 0 && s.ram && overlap(p, e) && !p.dashHit.has(e);
     if (dmg || rammed) {
@@ -545,7 +626,8 @@ function updatePlay(dt) {
       (dmg ? p.atkHit : p.dashHit).add(e);
       if (e.kind === 'armored' || e.kind === 'boss') {
         const behind = (p.x + p.w / 2 - (e.x + e.w / 2)) * e.face < 0;
-        d = behind ? d * 2 : s.pierce ? d : d * 0.25;
+        const weakMultiplier = e.kind === 'boss' ? 1.5 : 1.6;
+        d = behind ? d * weakMultiplier : s.pierce ? d : d * 0.5;
         burst(e.x + (behind ? 0 : e.w), e.y + 14, behind ? '#ff5252' : '#b0bec5', 6);
       }
       if (s.ambush && e.hp >= e.maxHp - 0.001) d *= 2;
@@ -555,14 +637,14 @@ function updatePlay(dt) {
       e.vy = -180; shake = 3; hitstop = 0.045; burst(e.x + e.w / 2, e.y + e.h / 2, '#ffd54f');
     } else if (overlap(p, e) && p.inv <= 0 && e.stunT <= 0) {
       if (s.thorns) { e.hp -= s.thorns; e.flash = 0.1; if (s.thornPoison) poison(e); if (s.thornFire) ignite(e); if (s.thornChill) e.chillT = 2.5; }
-      if (e.hp > 0) hurtPlayer(e, e.kind === 'boss' ? 2 : 1);
+      if (e.hp > 0) hurtPlayer(e, e.kind === 'boss' ? 1.5 : 1);
     }
   }
   for (const b of shots) {
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (p.atkT > 0 && Math.hypot(b.x - box.x - box.w / 2, b.y - box.y - box.h / 2) < s.reach + 10) { b.dead = true; burst(b.x, b.y, '#aed581', 5); }
     else if (p.inv <= 0 && overlap(p, { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 })) { b.dead = true; hurtPlayer(b); }
-    else if (b.x < 0 || b.x > W || b.y < 0 || b.y > H || platforms.some(q => overlap({ x: b.x - 3, y: b.y - 3, w: 6, h: 6 }, q))) b.dead = true;
+    else if (b.x < 0 || b.x > WORLD_W || b.y < 0 || b.y > H || platforms.some(q => overlap({ x: b.x - 3, y: b.y - 3, w: 6, h: 6 }, q))) b.dead = true;
   }
   shots.filter(b => b.dead).forEach(removeObj); shots = shots.filter(b => !b.dead);
   for (const b of pshots) {
@@ -572,7 +654,7 @@ function updatePlay(dt) {
     if (e) {
       const arm = e.kind === 'armored' || e.kind === 'boss', front = !arm || (b.vx * e.face > 0);
       e.hp -= (b.dmg || 1) * (front ? (arm && !s.pierce ? 0.25 : 1) : 2); poison(e); e.flash = 0.1; b.dead = true; burst(b.x, b.y, b.quill ? '#e8e0c0' : '#b455d6', 6);
-    } else if (b.x < 0 || b.x > W || b.y < -50 || b.y > H || platforms.some(q => overlap(box2, q))) b.dead = true;
+    } else if (b.x < 0 || b.x > WORLD_W || b.y < -50 || b.y > H || platforms.some(q => overlap(box2, q))) b.dead = true;
   }
   pshots.filter(b => b.dead).forEach(removeObj); pshots = pshots.filter(b => !b.dead);
 
@@ -596,7 +678,7 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  run.revived = false; run.bosses = 0; room = 0; player = null; choice = null;
+  run.revived = false; run.bosses = 0; room = 0; player = null; choice = null; fruitPending = false; fruitTree = null;
 }
 function beginGame() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nov tek se kljub temu začne */ }
@@ -604,7 +686,7 @@ function beginGame() {
 }
 function toMenu() { resetRun(); startRoom(); clearObjects(); mode = 'menu'; Snd.music('menu'); }
 function setDifficulty(value) {
-  difficulty = value === 'easy' ? 'easy' : 'hard';
+  difficulty = normalizeDifficulty(value);
   try { localStorage.setItem('evo-difficulty', difficulty); } catch (e) { /* izbor še vedno velja za ta tek */ }
 }
 function drawMenu() {
@@ -613,15 +695,17 @@ function drawMenu() {
   ui.fillStyle = '#dce3f7'; ui.font = '17px monospace'; ui.fillText('Bori se, razvijaj se in poišči svojo evolucijsko pot.', W / 2, 112);
   ui.font = 'bold 18px monospace'; ui.fillStyle = '#fff'; ui.fillText('IZBERI TEŽAVNOST', W / 2, 165);
   const cards = [
-    { x: 175, value: 'easy', title: 'LAŽJA', desc: ['Po vsaki stopnji izberi', 'dve izboljšavi.'], color: '#9be15d' },
-    { x: 505, value: 'hard', title: 'TEŽJA', desc: ['Po vsaki stopnji izberi', 'eno izboljšavo.'], color: '#ff9a6a' },
+    { x: 55, value: 'easy', title: 'LAŽJA', desc: ['Po vsaki stopnji izberi', 'dve izboljšavi.'], color: '#9be15d' },
+    { x: 350, value: 'hard', title: 'TEŽJA', desc: ['Po vsaki stopnji izberi', 'eno izboljšavo.'], color: '#ff9a6a' },
+    { x: 645, value: 'challenge', title: 'IZZIVNA', desc: ['Ena izboljšava na stopnjo;', 'sovražniki: +20 % zdravja', 'in povzročene škode.'], color: '#ff5d73' },
   ];
   cards.forEach(c => {
     const active = difficulty === c.value;
-    ui.fillStyle = active ? '#252f3b' : '#171b2c'; ui.fillRect(c.x, 190, 280, 116);
-    ui.strokeStyle = active ? c.color : '#515a70'; ui.lineWidth = active ? 4 : 2; ui.strokeRect(c.x, 190, 280, 116);
-    ui.fillStyle = c.color; ui.font = 'bold 24px monospace'; ui.fillText(c.title, c.x + 140, 230);
-    ui.fillStyle = '#dce3f7'; ui.font = '15px monospace'; c.desc.forEach((line, i) => ui.fillText(line, c.x + 140, 260 + i * 22));
+    ui.fillStyle = active ? '#252f3b' : '#171b2c'; ui.fillRect(c.x, 190, 260, 116);
+    ui.strokeStyle = active ? c.color : '#515a70'; ui.lineWidth = active ? 4 : 2; ui.strokeRect(c.x, 190, 260, 116);
+    ui.fillStyle = c.color; ui.font = 'bold 21px monospace'; ui.fillText(c.title, c.x + 130, 230);
+    ui.fillStyle = '#dce3f7'; ui.font = c.value === 'challenge' ? '13px monospace' : '15px monospace';
+    c.desc.forEach((line, i) => ui.fillText(line, c.x + 130, 258 + i * (c.value === 'challenge' ? 18 : 22)));
   });
   ui.fillStyle = '#aab'; ui.font = '14px monospace';
   ui.fillText('Na vsaki peti stopnji te čaka šef; njegov poraz prinese še posebno nagrado.', W / 2, 335);
@@ -638,13 +722,13 @@ function drawMenu() {
     ui.fillText(`Rekord: ${best.room}. stopnja · premagani šefi: ${best.bosses}`, W / 2, 485);
   }
   ui.fillStyle = '#aab'; ui.font = '13px monospace';
-  ui.fillText('1/2: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
+  ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
   ui.fillText('K/Shift: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 40px monospace'; ui.fillText('PREMOR', W / 2, 68);
-  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(`Stopnja ${room} · težavnost: ${difficulty === 'easy' ? 'lažja' : 'težja'}`, W / 2, 96);
+  ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText(`Stopnja ${room} · težavnost: ${difficultyLabel()}`, W / 2, 96);
   const buttons = [
     { y: 108, label: 'NADALJUJ', color: '#9be15d' },
     { y: 146, label: 'POGLEJ RAZVOJNO DREVO', color: '#7fd8ff' },
@@ -671,9 +755,11 @@ function drawPauseSynergies() {
   all.forEach((syn, i) => {
     const col = i % 5, row = Math.floor(i / 5), x = 56 + col * 170, y = 316 + row * 37;
     ui.fillStyle = pauseSynHover === i ? '#343b50' : '#171b2c'; ui.fillRect(x, y, 162, 31);
-    ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 1.5; ui.strokeRect(x, y, 162, 31);
-    ui.beginPath(); ui.arc(x + 16, y + 15.5, 10, 0, Math.PI * 2); ui.fillStyle = NICHES.syn.color; ui.fill();
-    ui.fillStyle = '#171b2c'; ui.font = 'bold 11px monospace'; ui.fillText('✦', x + 16, y + 19);
+    ui.fillStyle = synergyGradient(syn, x, y, 162, 31); ui.fillRect(x, y, 162, 31);
+    ui.globalAlpha = 0.78; ui.fillStyle = '#10121c'; ui.fillRect(x, y, 162, 31); ui.globalAlpha = 1;
+    ui.strokeStyle = synergyGradient(syn, x, y, 162, 31); ui.lineWidth = 1.5; ui.strokeRect(x, y, 162, 31);
+    ui.beginPath(); ui.arc(x + 16, y + 15.5, 10, 0, Math.PI * 2); ui.fillStyle = synergyGradient(syn, x + 6, y + 5.5, 20, 20); ui.fill();
+    ui.fillStyle = '#fff'; ui.font = 'bold 11px monospace'; ui.fillText('✦', x + 16, y + 19);
     ui.textAlign = 'left'; ui.fillStyle = '#f2d9ed'; ui.font = '11px monospace';
     ui.fillText(syn.name.length > 19 ? syn.name.slice(0, 17) + '…' : syn.name, x + 32, y + 19);
     ui.textAlign = 'center';
@@ -682,8 +768,9 @@ function drawPauseSynergies() {
     const syn = all[pauseSynHover], tipW = 330, tipH = 104;
     const x = clamp(mouse.x + 14, 8, W - tipW - 8), y = clamp(mouse.y + 14, 8, H - tipH - 8);
     ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
-    ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
-    ui.textAlign = 'left'; ui.fillStyle = NICHES.syn.color; ui.font = 'bold 14px monospace'; ui.fillText(syn.name, x + 12, y + 22);
+    ui.strokeStyle = synergyGradient(syn, x, y, tipW, tipH); ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
+    ui.fillStyle = synergyGradient(syn, x, y, tipW, 30); ui.fillRect(x, y, tipW, 30);
+    ui.textAlign = 'left'; ui.fillStyle = '#10121c'; ui.font = 'bold 14px monospace'; ui.fillText('✦ ' + syn.name, x + 12, y + 20);
     ui.fillStyle = '#fff'; ui.font = '12px monospace'; ui.fillText('Pogoja: ' + synSources(syn).join(' + '), x + 12, y + 47);
     ui.fillStyle = '#dce3f7'; wrap('Učinek: ' + syn.desc, tipW - 24).slice(0, 2).forEach((line, i) => ui.fillText(line, x + 12, y + 69 + i * 16));
     ui.textAlign = 'center';
@@ -766,8 +853,11 @@ function drawSynergyCard() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = NICHES.syn.color; ui.font = 'bold 17px monospace'; ui.fillText('SINERGIJA SAMODEJNO ODKLENJENA', W / 2, 145);
   ui.fillStyle = '#171b2c'; ui.fillRect(190, 170, 580, 230);
-  ui.strokeStyle = NICHES.syn.color; ui.lineWidth = 4; ui.strokeRect(190, 170, 580, 230);
-  ui.fillStyle = NICHES.syn.color; ui.font = 'bold 28px monospace'; ui.fillText('✦ ' + syn.name, W / 2, 225);
+  ui.strokeStyle = synergyGradient(syn, 190, 170, 580, 230); ui.lineWidth = 4; ui.strokeRect(190, 170, 580, 230);
+  ui.fillStyle = synergyGradient(syn, 190, 170, 580, 66); ui.fillRect(190, 170, 580, 66);
+  ui.beginPath(); ui.arc(235, 203, 17, 0, Math.PI * 2); ui.fillStyle = synergyGradient(syn, 218, 186, 34, 34); ui.fill();
+  ui.fillStyle = '#fff'; ui.font = 'bold 18px monospace'; ui.fillText('✦', 235, 209);
+  ui.fillStyle = '#10121c'; ui.font = 'bold 28px monospace'; ui.fillText(syn.name, W / 2 + 20, 212);
   ui.fillStyle = '#c8d0e8'; ui.font = '15px monospace'; ui.fillText('Povezuje: ' + synSources(syn).join(' + '), W / 2, 275);
   ui.fillStyle = '#fff'; ui.font = 'bold 16px monospace'; ui.fillText('Učinek', W / 2, 318);
   ui.fillStyle = '#dce3f7'; wrap(syn.desc, 520).slice(0, 2).forEach((line, i) => ui.fillText(line, W / 2, 348 + i * 21));
@@ -776,9 +866,11 @@ function drawSynergyCard() {
 }
 function updateMenu() {
   if (mode === 'menu') {
-    if (hit('ArrowLeft', 'KeyA', 'ArrowRight', 'KeyD')) setDifficulty(difficulty === 'easy' ? 'hard' : 'easy');
+    if (hit('ArrowLeft', 'KeyA')) setDifficulty(difficulty === 'challenge' ? 'hard' : difficulty === 'hard' ? 'easy' : 'challenge');
+    if (hit('ArrowRight', 'KeyD')) setDifficulty(difficulty === 'easy' ? 'hard' : difficulty === 'hard' ? 'challenge' : 'easy');
     if (hit('Digit1', 'Numpad1')) setDifficulty('easy');
     if (hit('Digit2', 'Numpad2')) setDifficulty('hard');
+    if (hit('Digit3', 'Numpad3')) setDifficulty('challenge');
     if (hit('KeyC') && savedGameExists()) loadSavedGame();
     if (hit('Enter', 'NumpadEnter', 'Space', 'KeyJ')) beginGame();
   }
@@ -803,6 +895,7 @@ function pauseAction(index) {
 }
 function endRoom(boss) {
   mode = 'choose';
+  if (player.hp <= stats.maxHp / 5 && !fruitTree && !fruitPending) fruitPending = true;
   player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
   Snd.play('clear'); Snd.music(boss ? 'boss' : 'game', room);
@@ -873,8 +966,9 @@ uic.addEventListener('click', e => {
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
   if (mode === 'menu') {
     if (mouse.y >= 190 && mouse.y <= 306) {
-      if (mouse.x >= 175 && mouse.x <= 455) setDifficulty('easy');
-      else if (mouse.x >= 505 && mouse.x <= 785) setDifficulty('hard');
+      if (mouse.x >= 55 && mouse.x <= 315) setDifficulty('easy');
+      else if (mouse.x >= 350 && mouse.x <= 610) setDifficulty('hard');
+      else if (mouse.x >= 645 && mouse.x <= 905) setDifficulty('challenge');
     } else if (mouse.y >= 412 && mouse.y <= 454 && savedGameExists()) loadSavedGame();
     else if (mouse.y >= 360 && mouse.y <= 407) beginGame();
     return;
@@ -972,12 +1066,16 @@ function animateEnemies(dt, t) {
     if (e.kind === 'hopper') { const st = clamp(-e.vy / 1800, -0.15, 0.15); rig.model.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5); }
     if (rig.head) rig.head.rotation.z = Math.sin(t * 2 + e.t) * 0.12 - (e.shootT < 0.4 ? 0.4 : 0);
     if (rig.sac) rig.sac.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(t * 5 + e.t);
-    setGlow(rig, e.chillT > 0 && !(e.flash > 0) && !(e.burnT > 0) ? '#8fd8ff' : e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff', e.flash > 0 ? 0.9 : e.burnT > 0 ? 0.5 : e.chillT > 0 ? 0.4 : e.poisT > 0 ? 0.35 : 0);
+    const charging = e.kind === 'boss' && e.chargeT > 0.48;
+    setGlow(rig, charging ? '#ffd24a' : e.chillT > 0 && !(e.flash > 0) && !(e.burnT > 0) ? '#8fd8ff' : e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff',
+      charging ? 1.15 : e.flash > 0 ? 0.9 : e.burnT > 0 ? 0.5 : e.chillT > 0 ? 0.4 : e.poisT > 0 ? 0.35 : 0);
+    if (rig.weakpoint) rig.weakpoint.material.emissiveIntensity = 1.4 + 0.5 * Math.sin(t * 7 + e.t);
+    if (e.kind === 'boss') rig.model.scale.setScalar(1.65 * (charging ? 1 + 0.04 * Math.sin(t * 22) : 1));
   }
   for (const b of shots.concat(pshots)) {
     if (!b.obj) {
       const mine = pshots.includes(b);
-      b.obj = new THREE.Mesh(GEO.sph, glowMat(mine ? '#d06bf5' : '#c6ff00', 1.2));
+      b.obj = new THREE.Mesh(GEO.sph, glowMat(mine ? '#d06bf5' : b.color || '#c6ff00', 1.2));
       b.obj.scale.setScalar(mine ? 0.17 : (b.r || 6) / 40 * 1.2);
       scene.add(b.obj);
     }
@@ -990,7 +1088,7 @@ function updateCamera(dt, t) {
   const pcx = wx(player.x + player.w / 2), pcy = wy(player.y + player.h / 2);
   let tx, ty, tz, lx, ly;
   if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 0.75; }
-  else { tx = 12 + (pcx - 12) * 0.15; ty = 6.9 + (pcy - 6.9) * 0.08; tz = 20; lx = tx; ly = ty; }
+  else { tx = clamp(pcx, 12, WORLD_W / 40 - 12); ty = 6.9 + (pcy - 6.9) * 0.08; tz = 20; lx = tx; ly = ty; }
   const k = Math.min(1, dt * (showcase() ? 3 : 4));
   camX += (tx - camX) * k; camY += (ty - camY) * k; camZ += (tz - camZ) * k; lookX += (lx - lookX) * k; lookY += (ly - lookY) * k;
   const sh = shake / 40;
@@ -1008,6 +1106,13 @@ function wrap(text, maxW) {
   }
   if (cur) lines.push(cur);
   return lines;
+}
+function synergyGradient(syn, x, y, w, h) {
+  const first = NICHES[TRAIT_BY_ID[syn.need[0]].niche].color;
+  const second = NICHES[TRAIT_BY_ID[syn.need[1]].niche].color;
+  const gr = ui.createLinearGradient(x, y + h, x + w, y);
+  gr.addColorStop(0, first); gr.addColorStop(1, second);
+  return gr;
 }
 function drawHUD() {
   ui.textAlign = 'right'; ui.font = '13px monospace'; ui.fillStyle = '#9be15d';
@@ -1060,19 +1165,34 @@ function drawChoose() {
   const lin = lineage(owned);
   if (lin.length) { ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(10, 150, 470, 12 + lin.length * 17); }
   lin.forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 166 + i * 17); });
+  ui.fillStyle = 'rgba(8,10,22,.7)'; ui.fillRect(500, 148, 450, 96);
+  ui.strokeStyle = '#59627a'; ui.lineWidth = 1; ui.strokeRect(500, 148, 450, 96);
+  ui.textAlign = 'left'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 12px monospace'; ui.fillText('STATISTIKA STVORA', 514, 166);
+  ui.font = '12px monospace'; ui.fillStyle = '#dce3f7';
+  const col1 = [`Zdravje: ${player.hp.toFixed(1)} / ${stats.maxHp}`, `Škoda: ${stats.dmg.toFixed(1)} · doseg: ${stats.reach}`,
+    `Hitrost: ${Math.round(stats.speed)} · skok: ${Math.round(stats.jump)}`, `Zračni skoki: ${stats.airJumps} · bodice: ${stats.thorns}`];
+  const col2 = [`Napadi: ${(1 / stats.atkCd).toFixed(1)} / s`, `Obnova: ${stats.regen.toFixed(1)} zdravja/s`,
+    `Sunek: ${stats.dash ? 'da' : 'ne'} · bonus: ${stats.dashDmg.toFixed(1)}`, `Strup: ${stats.poison.toFixed(1)} · ogenj: ${stats.burn.toFixed(1)}`];
+  col1.forEach((line, i) => ui.fillText(line, 514, 182 + i * 15));
+  col2.forEach((line, i) => ui.fillText(line, 735, 182 + i * 15));
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
     ui.fillStyle = hv ? '#252a40' : '#171b2c'; ui.fillRect(r.x, r.y, r.w, r.h);
     ui.strokeStyle = col; ui.lineWidth = hv ? 3 : 1.5; ui.strokeRect(r.x, r.y, r.w, r.h);
-    ui.fillStyle = col; ui.fillRect(r.x, r.y, r.w, 26);
+    ui.fillStyle = t.syn ? synergyGradient(t, r.x, r.y, r.w, 26) : col; ui.fillRect(r.x, r.y, r.w, 26);
     ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace';
     const generic = t.id.startsWith('g_');
-    ui.fillText(t.syn ? '★ SINERGIJA' : `${NICHES[t.niche].name.toUpperCase()} · ${generic ? 'splošna' : t.boss ? 'šefovska' : 'raven ' + traitTier(t)}`, r.x + 8, r.y + 17);
+    if (t.syn) {
+      ui.beginPath(); ui.arc(r.x + 14, r.y + 13, 9, 0, Math.PI * 2); ui.fillStyle = synergyGradient(t, r.x + 5, r.y + 4, 18, 18); ui.fill();
+      ui.fillStyle = '#fff'; ui.fillText('✦', r.x + 14, r.y + 17);
+    }
+    ui.fillStyle = '#10121c';
+    ui.fillText(t.syn ? 'SINERGIJA' : `${NICHES[t.niche].name.toUpperCase()} · ${generic ? 'splošna' : t.boss ? 'šefovska' : 'raven ' + traitTier(t)}`, r.x + (t.syn ? 28 : 8), r.y + 17);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
     ui.fillStyle = '#fff'; ui.font = 'bold 19px monospace'; ui.fillText(t.name, r.x + 10, r.y + 52);
     ui.font = '13px monospace'; ui.fillStyle = '#dde';
     if (t.syn) {
-      ui.fillStyle = col; ui.font = 'bold 12px monospace';
+      ui.fillStyle = synergyGradient(t, r.x, r.y, r.w, r.h); ui.font = 'bold 12px monospace';
       wrap('Povezuje: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 72 + k * 15));
       ui.fillStyle = '#fff'; ui.font = '13px monospace'; ui.fillText('Učinek:', r.x + 10, r.y + 108);
       ui.fillStyle = '#dde'; wrap(t.desc, r.w - 20).slice(0, 3).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 124 + k * 16));

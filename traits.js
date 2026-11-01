@@ -20,10 +20,10 @@ function T(id, name, niche, parent, desc, apply, extra) {
   TRAITS.push(Object.assign({ id, name, niche, parent, desc, apply }, extra || {}));
 }
 // --- Plenilec ---
-T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; });
+T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'] });
 T('rending', 'Razdiralni kremplji', 'predator', 'claws', '+1 škode in daljši kremplji', s => { s.dmg += 1; s.reach += 12; });
-T('horns', 'Rogovi', 'predator', 'claws', 'močneje odbiješ sovražnike in povzročiš +0,5 škode', s => { s.knock += 120; s.dmg += 0.5; });
-T('frenzy', 'Bes', 'predator', 'rending', 'napadaš precej hitreje', s => { s.atkCd *= 0.6; }, { excludes: ['carapace'] });
+T('horns', 'Rogovi', 'predator', null, 'močneje odbiješ sovražnike in povzročiš +0,5 škode; ohraniš štirinožno držo', s => { s.knock += 120; s.dmg += 0.5; }, { excludes: ['claws'] });
+T('frenzy', 'Bes', 'predator', 'rending', 'napadaš hitreje', s => { s.atkCd *= 0.75; }, { excludes: ['carapace'] });
 T('cleave', 'Krožni zamah', 'predator', 'rending', 'zamahneš v obe smeri', s => { s.spin = true; s.reach += 6; });
 T('apex', 'Vrhunski plenilec', 'predator', 'frenzy', 'ko premagaš sovražnika, si povrneš zdravje', s => { s.lifesteal = 1; s.dmg += 1; });
 T('ram', 'Naskok', 'predator', 'horns', 'sunek poškoduje sovražnike', s => { s.dash = true; s.ram = true; });
@@ -34,20 +34,20 @@ T('legs', 'Močne noge', 'swift', null, 'tečeš hitreje in skačeš višje', s 
 T('hops', 'Dvojni skok', 'swift', 'legs', 'v zraku lahko skočiš še enkrat', s => { s.airJumps += 1; });
 T('tail', 'Rep za ravnotežje', 'swift', 'legs', 'nekoliko hitreje tečeš in višje skačeš', s => { s.speed += 25; s.jump += 20; });
 T('dash', 'Hiter sunek', 'swift', 'hops', 'sunkovito se poženeš naprej (K / Shift)', s => { s.dash = true; });
-T('wings', 'Kožnata krila', 'swift', 'hops', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; }, { excludes: ['carapace'] });
+T('wings', 'Kožnata krila', 'swift', 'hops', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; }, { excludes: ['carapace', 'gel'] });
 T('phase', 'Senčni sunek', 'swift', 'dash', 'sunek se hitreje znova napolni', s => { s.dashCd = 0.35; });
 T('flyer', 'Letalec', 'swift', 'wings', 'dobiš dodaten skok v zraku in počasneje padaš', s => { s.airJumps += 1; s.glideFall = 60; });
 T('sprint', 'Šprint', 'swift', 'tail', 'tečeš precej hitreje', s => { s.speed += 70; });
 T('pounce', 'Udar ob pristanku', 'swift', 'tail', 'pristanek po padcu poškoduje bližnje sovražnike', s => { s.stomp = true; });
 // --- Vzdržljivost ---
 T('hide', 'Debela koža', 'bulwark', null, '+3 zdravja', s => { s.maxHp += 3; });
-T('carapace', 'Oklep', 'bulwark', 'hide', '+5 zdravja, vendar tečeš počasneje', s => { s.maxHp += 5; s.speed -= 30; }, { excludes: ['frenzy', 'wings'] });
+T('carapace', 'Oklep', 'bulwark', 'hide', '+5 zdravja, vendar tečeš počasneje; ni združljiv z letom', s => { s.maxHp += 5; s.speed -= 30; }, { excludes: ['frenzy', 'wings', 'thermals', 'flyer'] });
 T('fat', 'Maščobne zaloge', 'bulwark', 'hide', '+2 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 2; s.regen += 0.15; });
 T('spikes', 'Bodice', 'bulwark', 'carapace', 'sovražniki, ki se te dotaknejo, prejmejo škodo', s => { s.thorns += 2; });
 T('shell', 'Školjka', 'bulwark', 'carapace', 'ščit izniči prvi zadetek na vsaki stopnji', s => { s.shield = true; });
 T('barbed', 'Ježeve bodice', 'bulwark', 'spikes', 'bodice povzročijo dodatno škodo', s => { s.thorns += 3; });
 T('regen', 'Regeneracija', 'bulwark', 'fat', 'zdravje se obnavlja hitreje', s => { s.regen += 0.4; });
-T('bulk', 'Težka postava', 'bulwark', 'fat', '+1 škode in +2 zdravja', s => { s.dmg += 1; s.maxHp += 2; });
+T('bulk', 'Težka postava', 'bulwark', 'fat', '+1 škode in +2 zdravja; težka postava ne more leteti', s => { s.dmg += 1; s.maxHp += 2; }, { excludes: ['wings', 'thermals'] });
 T('undying', 'Nesmrtna vzdržljivost', 'bulwark', 'regen', 'enkrat na tek se po porazu vrneš v boj', s => { s.revive = true; });
 // --- Strup ---
 T('fangs', 'Strupeni zobje', 'venom', null, 'tvoji napadi zastrupijo sovražnike', s => { s.poison = 1; s.poisonDur = 3; });
@@ -67,11 +67,11 @@ T('meteor', 'Meteorski padec', 'swift', 'pounce', 'AKTIVNO: poletiš navzgor in 
 T('bastion', 'Bastion', 'bulwark', 'shell', 'AKTIVNO: za 2,5 sekunde postaneš neranljiv', s => {}, { active: { cd: 12, name: 'Bastion', color: '#9be15d' } });
 T('quills', 'Izstrelki iz bodic', 'bulwark', 'barbed', 'AKTIVNO: izstreliš bodice v vse smeri', s => { s.thorns += 1; }, { active: { cd: 6, name: 'Bodice', color: '#e8e0c0' } });
 T('colossus', 'Kolos', 'bulwark', 'bulk', 'postaneš večji; +3 zdravja, +1 škode in močnejši odriv', s => { s.maxHp += 3; s.dmg += 1; s.knock += 80; }, { scale: 1.12 });
-T('miasma', 'Strupena meglica', 'venom', 'cloud', 'AKTIVNO: sprožiš strupeno eksplozijo okoli sebe', s => {}, { active: { cd: 8, name: 'Meglica', color: '#c24ff0' } });
-T('epidemic', 'Epidemija', 'venom', 'plague', 'AKTIVNO: zastrupiš vse sovražnike v prostoru', s => {}, { active: { cd: 14, name: 'Epidemija', color: '#9be15d' } });
+T('miasma', 'Strupena meglica', 'venom', 'cloud', 'AKTIVNO: zastrupiš bližnje sovražnike', s => {}, { active: { cd: 10, name: 'Meglica', color: '#c24ff0' } });
+T('epidemic', 'Epidemija', 'venom', 'plague', 'AKTIVNO: za 4 sekunde zastrupiš vse sovražnike', s => {}, { active: { cd: 18, name: 'Epidemija', color: '#9be15d' } });
 T('neuro', 'Nevrotoksin', 'venom', 'slow', '+1 strup; zastrupljeni sovražniki se še počasneje premikajo', s => { s.poison += 1; });
 // --- Ogenj (nova niša) ---
-T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; });
+T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; }, { excludes: ['gel'] });
 T('breath', 'Ognjeni dih', 'fire', 'ember', 'AKTIVNO: izbruhaš plamene pred seboj', s => {}, { active: { cd: 5, name: 'Ognjeni dih', color: '#ff8a2a' } });
 T('scorch', 'Ožgana sled', 'fire', 'ember', 'zažgeš bližnje sovražnike', s => { s.fireAura = true; });
 T('molten', 'Staljena koža', 'fire', 'ember', '+2 zdravja; sovražniki, ki se te dotaknejo, zagorijo', s => { s.maxHp += 2; s.thorns += 2; s.thornFire = true; });
@@ -79,7 +79,7 @@ T('inferno', 'Ognjeni vihar', 'fire', 'breath', 'ogenj povzroča več škode in 
 T('cinder', 'Žareči pepel', 'fire', 'scorch', 'goreči sovražniki ob porazu eksplodirajo', s => { s.cinder = true; });
 T('magma', 'Magma', 'fire', 'molten', '+4 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 4; s.regen += 0.2; });
 // --- Voda (led je globoko v veji) ---
-T('gel', 'Sluzasta koža', 'water', null, '+2 zdravja in +20 hitrosti', s => { s.maxHp += 2; s.speed += 20; });
+T('gel', 'Sluzasta koža', 'water', null, '+2 zdravja in +20 hitrosti; ne združuje se z ognjem ali letom', s => { s.maxHp += 2; s.speed += 20; }, { excludes: ['ember', 'wings', 'thermals'] });
 T('fins', 'Plavuti', 'water', 'gel', 'odkleneš sunek (K / Shift) in pridobiš +30 hitrosti', s => { s.dash = true; s.speed += 30; });
 T('tentacle', 'Lovke', 'water', 'gel', '+18 dosega in +0,5 škode', s => { s.reach += 18; s.dmg += 0.5; });
 T('frost', 'Ledeni dotik', 'water', 'fins', 'tvoji napadi upočasnijo sovražnike', s => { s.chill = true; });
@@ -101,7 +101,7 @@ T('bloomburst', 'Cvetni izbruh', 'land', 'spores', 'AKTIVNO: povrneš si 2 točk
 // --- Zrak (elektrika) ---
 T('feathers', 'Perje', 'air', null, 'dobiš dodaten skok v zraku in +20 hitrosti', s => { s.airJumps += 1; s.speed += 20; });
 T('static', 'Statični naboj', 'air', 'feathers', 'tvoj napad z elektriko zadene še bližnjega sovražnika', s => { s.arc = 1; });
-T('thermals', 'Vzponski tokovi', 'air', 'feathers', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; s.glideFall = 90; }, { excludes: ['carapace'] });
+T('thermals', 'Vzponski tokovi', 'air', 'feathers', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; s.glideFall = 90; }, { excludes: ['carapace', 'gel', 'bulk'] });
 T('conduct', 'Prevodnost', 'air', 'static', 'električni udar preskoči na več sovražnikov', s => { s.arc += 2; });
 T('bolt', 'Strela', 'air', 'static', 'AKTIVNO: strela udari do 3 sovražnike', s => {}, { active: { cd: 8, name: 'Strela', color: '#fff35a' } });
 T('gust', 'Sunek vetra', 'air', 'thermals', 'odkleneš hiter sunek (K / Shift), ki se hitreje obnovi', s => { s.dash = true; s.dashCd = Math.min(s.dashCd, 0.5); });
@@ -109,9 +109,9 @@ T('stormcloud', 'Nevihtni oblak', 'air', 'thermals', 'ob pristanku udariš ob tl
 T('tempest', 'Vihar', 'air', 'bolt', 'strela lahko zadene do 5 sovražnikov', s => { s.boltN = 5; });
 T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši napadi in močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { scale: 1.1 });
 // --- Nagrade za šefa (ena na šefa) ---
-T('bossheart', 'Tiranovo srce', 'boss', null, '+4 zdravja in +1 škode', s => { s.maxHp += 4; s.dmg += 1; }, { boss: true });
-T('cracker', 'Lomilec oklepa', 'boss', null, 's prednje strani prebiješ sovražnikov oklep', s => { s.pierce = true; }, { boss: true });
-T('alpha', 'Alfa naskok', 'boss', null, 'napadaš in tečeš hitreje', s => { s.atkCd *= 0.8; s.speed += 30; }, { boss: true });
+T('bossheart', 'Tiranovo srce', 'boss', null, '+5 zdravja in +1 škode', s => { s.maxHp += 5; s.dmg += 1; }, { boss: true });
+T('cracker', 'Lomilec oklepa', 'boss', null, 'prebiješ sovražnikov oklep in povzročiš +0,5 škode', s => { s.pierce = true; s.dmg += 0.5; }, { boss: true });
+T('alpha', 'Alfa naskok', 'boss', null, 'tečeš in napadaš hitreje; odkleneš močnejši sunek', s => { s.atkCd *= 0.75; s.speed += 40; s.dash = true; s.dashDmg += 1; }, { boss: true });
 
 const GENERIC = [
   { id: 'g_hp', name: 'Prilagoditev: vzdržljivost', niche: 'bulwark', desc: '+2 zdravja', apply: s => { s.maxHp += 2; } },
