@@ -30,8 +30,8 @@ const BODY_PLANS = {
   drake: { name: 'luskasto telo', niche: 'fire' },
 };
 const NICHE_BODY_PLANS = Object.fromEntries(Object.entries(BODY_PLANS).map(([id, plan]) => [plan.niche, id]));
-const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR'];
-const ACTIVE_KEY_LABELS = ['E', 'Q', 'R'];
+const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR', 'KeyV'];
+const ACTIVE_KEY_LABELS = ['E', 'Q', 'R', 'V'];
 const TRAITS = [];
 function T(id, name, niche, parent, desc, apply, extra) {
   const trait = Object.assign({ id, name, niche, parent, desc, apply }, extra || {});
@@ -51,6 +51,7 @@ function nicheAllowedByPath(niche, path) {
 }
 function traitAllowedByPath(t, path) {
   const selected = pathNiches(path);
+  if (path && path.founderPicks < 2 && (['fire', 'venom'].includes(t.niche) || (t.excludes || []).length)) return false;
   if (!selected.length || selected.includes(t.niche)) return true;
   if (path.founderPicks >= 3 || selected.length >= 3) return false;
   return !selected.some(niche => nichesConflict(niche, t.niche));
@@ -111,6 +112,7 @@ T('neuro', 'Nevrotoksin', 'venom', 'slow', '+1 strup; zastrupljeni sovražniki s
 // --- Ogenj (nova niša) ---
 T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; }, { excludes: ['gel'], bodyPlan: 'chordate' });
 T('breath', 'Ognjeni dih', 'fire', 'ember', 'AKTIVNO: izbruhaš plamene pred seboj', s => {}, { active: { cd: 5, name: 'Ognjeni dih', color: '#ff8a2a' } });
+T('firevortex', 'Ognjeni vrtinec', 'fire', 'breath', 'AKTIVNO: za 5 sekund ustvariš vrtinec ognja pred seboj', s => {}, { active: { cd: 12, name: 'Ognjeni vrtinec', color: '#ff672b' } });
 T('scorch', 'Ožgana sled', 'fire', 'ember', 'zažgeš bližnje sovražnike', s => { s.fireAura = true; });
 T('molten', 'Staljena koža', 'fire', 'ember', '+2 zdravja; sovražniki, ki se te dotaknejo, zagorijo', s => { s.maxHp += 2; s.thorns += 2; s.thornFire = true; });
 T('inferno', 'Ognjeni vihar', 'fire', 'breath', 'ogenj povzroča več škode in traja dlje', s => { s.burn += 1.5; s.burnDur += 2; s.breathCd = 0.65; });
@@ -171,7 +173,7 @@ const TRAIT_DIMENSIONS = {
   movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'swoop', 'gust', 'stormcloud', 'gale', 'alpha'],
   offense: ['rending', 'frenzy', 'cleave', 'apex', 'bloodscent', 'ram', 'breaker', 'gore', 'spit', 'plague', 'ambush', 'roar', 'trample',
     'meteor', 'quills', 'miasma', 'epidemic', 'neuro', 'ember', 'breath', 'scorch', 'inferno', 'cinder', 'frost', 'torrent',
-    'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker', 'worldfang', 'ancientspore'],
+    'firevortex', 'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker', 'worldfang', 'ancientspore'],
   survival: ['carapace', 'stonehide', 'fat', 'spikes', 'shell', 'barbed', 'regen', 'bulk', 'undying', 'camo', 'cloud', 'slow', 'titan',
     'curl', 'colossus', 'molten', 'magma', 'iceshell', 'leviathan', 'bloom', 'thornvine', 'spores', 'canopy', 'treant', 'mossmantle', 'giantbloom',
     'manylegs', 'bossheart', 'heartroot', 'tidalheart', 'ironbloom'],
@@ -236,7 +238,7 @@ function computeStats(owned, extras) {
     cdMult: 1, chill: false, shatter: false, thornChill: false, sporeAura: false, arc: 0, arcDmg: 1, boltN: 3,
     burn: 0, burnDur: 0, fireAura: false, thornFire: false, cinder: false, breathCd: 5, scale: 1 };
   for (const t of TRAITS) if (owned.has(t.id)) { t.apply(s); if (t.scale) s.scale = Math.max(s.scale, t.scale); }
-  s.actives = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).slice(0, 3);
+  s.actives = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).slice(0, 4);
   if (extras) for (const g of GENERIC) for (let i = 0; i < (extras[g.id] || 0); i++) g.apply(s);
   s.synergies = SYNERGIES.filter(y => y.need.every(id => owned.has(id)));
   s.synergies.forEach(y => y.apply(s));
@@ -286,7 +288,7 @@ function dimensionInvest(owned) {
 function offers(owned, n = 3, path = null) {
   const inv = nicheInvest(owned);
   const dimInv = dimensionInvest(owned);
-  const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
+  const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 4;
   let candidates = TRAITS.filter(t => !t.boss && !t.secret && !(full && t.active) && traitState(t, owned) === 'open');
   if (path && !pathNiches(path).length) candidates = candidates.filter(t => traitRequires(t).length === 0);
   else if (path && pathNiches(path).length) candidates = candidates.filter(t => traitAllowedByPath(t, path));
@@ -327,6 +329,45 @@ function offers(owned, n = 3, path = null) {
   for (const g of GENERIC) if (out.length < n) out.push(g);
   return out;
 }
+function nicheTraitPool(owned, niche, path) {
+  const selected = pathNiches(path);
+  if (path && !selected.includes(niche) && (path.founderPicks >= 3 || selected.length >= 3
+    || selected.some(existing => nichesConflict(existing, niche)))) return [];
+  const activeFull = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 4;
+  return TRAITS.filter(t => t.niche === niche && !t.boss && !t.secret && !(activeFull && t.active)
+    && traitState(t, owned) === 'open' && traitAllowedByPath(t, path));
+}
+function nicheOffers(owned, path = null, n = 3) {
+  let niches = Object.keys(NICHES).filter(niche => niche !== 'boss' && niche !== 'syn'
+    && (nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche)));
+  if (path && pathNiches(path).length && (path.founderPicks >= 3 || pathNiches(path).length >= 3)) {
+    niches = niches.filter(niche => pathNiches(path).includes(niche));
+  }
+  for (let i = niches.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [niches[i], niches[j]] = [niches[j], niches[i]];
+  }
+  return niches.slice(0, n);
+}
+function offersForNiche(owned, niche, n = 3, path = null, avoid = []) {
+  const pool = nicheTraitPool(owned, niche, path);
+  if (!pool.length) pool.push(...GENERIC.filter(g => g.niche === niche));
+  const fresh = pool.filter(t => !avoid.includes(t.id));
+  for (let i = fresh.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [fresh[i], fresh[j]] = [fresh[j], fresh[i]];
+  }
+  const out = fresh.slice(0, n);
+  if (out.length < Math.min(n, pool.length)) {
+    const fill = pool.filter(t => !out.includes(t));
+    for (let i = fill.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [fill[i], fill[j]] = [fill[j], fill[i]];
+    }
+    out.push(...fill.slice(0, Math.min(n, pool.length) - out.length));
+  }
+  return out;
+}
 function bossOffers(owned) { return TRAITS.filter(t => t.boss && !owned.has(t.id)).slice(0, 3); }
 function secretOffers(owned, path = null) {
   const pool = TRAITS.filter(t => t.secret && traitState(t, owned) === 'open'
@@ -356,8 +397,11 @@ function lineage(owned) {
 }
 function creatureIdentity(owned, path = null) {
   const ranked = Object.entries(nicheInvest(owned)).filter(([, score]) => score > 0).sort((a, b) => b[1] - a[1]);
-  if (!ranked.length) return 'Sluz';
   const selected = pathNiches(path);
+  if (!ranked.length) {
+    const primary = selected[0];
+    return primary ? `${singleIdentity(primary)} · ${BODY_PLANS[NICHE_BODY_PLANS[primary]].name}` : 'Sluz';
+  }
   const primary = dominantNiche(owned, path) || ranked[0][0];
   const secondary = ranked.find(([niche]) => niche !== primary)?.[0] || selected.find(niche => niche !== primary);
   const tertiary = selected.find(niche => niche !== primary && niche !== secondary);
