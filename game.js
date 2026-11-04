@@ -233,6 +233,33 @@ function buildRoomScene() {
   const rockMat = M('#8a8a96'), rockMat2 = M('#6e6e7a');
   const fireflyM = glowMat(th.glow, 0.9); fireflyM.transparent = true;
   roomMats.push(fireflyM);
+  const supportNiche = dominantNiche(owned);
+  const treeAnchored = ['land', 'air', 'swift'].includes(supportNiche);
+  const cliffM = M(th.far2), cliffLightM = M(th.far3);
+  platforms.forEach(p => {
+    if (p.rock || p.y >= 500) return;
+    const cx = (p.x + p.w / 2) / 40, top = wy(p.y), ground = wy(500);
+    const height = ground - top, side = p.seed < 0.5 ? -1 : 1;
+    if (treeAnchored) {
+      const trunkX = cx + side * Math.min(p.w / 40 * 0.28, 0.72);
+      mk(roomGroup, GEO.taper, trunkM, [trunkX, (top + ground) / 2, -2.8],
+        [0.24 + p.seed * 0.12, height * 0.58, 0.24 + p.seed * 0.1], [0, 0, side * 0.025]).castShadow = false;
+      mk(roomGroup, GEO.taper, trunkM, [cx, top - 0.22, -2.45],
+        [0.09, p.w / 40 * 0.37, 0.09], [0, 0, -side * 0.82]).castShadow = false;
+      for (let leaf = 0; leaf < 3; leaf++) {
+        mk(roomGroup, GEO.sph, leaf % 2 ? treeM : topM,
+          [trunkX + (leaf - 1) * 0.24, top - 0.28 - (leaf % 2) * 0.12, -2.65],
+          [0.42, 0.28, 0.42]).castShadow = false;
+      }
+    } else {
+      mk(roomGroup, GEO.ico, cliffM, [cx + side * 0.12, (top + ground) / 2, -2.8],
+        [p.w / 40 * 0.52, height * 0.58, 0.46], [p.seed * 0.3, p.seed * 2, 0]).receiveShadow = true;
+      mk(roomGroup, GEO.ico, cliffLightM, [cx - side * p.w / 40 * 0.22, (top + ground) / 2, -2.4],
+        [p.w / 40 * 0.3, height * 0.42, 0.28], [0.1, p.seed * 3, 0]).castShadow = false;
+      mk(roomGroup, GEO.box, cliffLightM, [cx, top - 0.08, -2.15],
+        [p.w / 40 * 1.05, 0.17, 1.1]).castShadow = false;
+    }
+  });
   platforms.forEach((p, i) => {
     if (p.rock) {
       const rockHalfHeight = 0.38;
@@ -410,6 +437,9 @@ function addBackgroundBirds() {
   }
 }
 function updateBirds(dt, t) {
+  const visible = dayNightLevel <= 0.5;
+  for (const bird of birds) bird.visible = visible;
+  if (!visible) return;
   const minX = -16, maxX = WORLD_W / 40 + 16;
   for (const bird of birds) {
     const data = bird.userData;
@@ -483,6 +513,20 @@ function addWetScenery(th, M) {
   const waterGeo = new THREE.PlaneGeometry(1, 1); roomGeometries.push(waterGeo);
   const river = mk(roomGroup, waterGeo, waterMat, [wetLevel.riverX, wy(500) + 0.045, -8], [3.8, 30, 1], [-Math.PI / 2, 0, 0]);
   river.castShadow = false;
+  for (const [index, p] of platforms.entries()) {
+    if (p.rock || p.y >= 500 || index % 2 !== 0) continue;
+    const cx = (p.x + p.w / 2) / 40, top = wy(p.y), width = p.w / 40 * 0.72;
+    const stream = mk(roomGroup, waterGeo, waterMat, [cx, top + 0.065, 1.57], [width, 0.19, 1]);
+    stream.castShadow = false;
+    const lower = platforms.filter(q => !q.rock && q.y > p.y + 30).sort((a, b) => a.y - b.y)[0];
+    if (lower) {
+      const edgeX = cx + (p.seed < 0.5 ? -1 : 1) * p.w / 40 * 0.34;
+      const bottom = wy(lower.y), fallHeight = Math.max(0.1, top - bottom);
+      const cascade = mk(roomGroup, waterGeo, waterMat, [edgeX, top - fallHeight / 2, 1.5],
+        [0.18 + p.seed * 0.08, fallHeight, 1]);
+      cascade.castShadow = false;
+    }
+  }
   const bankMat = M('#6d7651'), rockMat = M('#72766a');
   for (const side of [-1, 1]) {
     mk(roomGroup, GEO.box, bankMat, [wetLevel.riverX + side * 2.2, wy(500) + 0.06, -8], [0.65, 0.12, 30]).castShadow = false;
@@ -1729,6 +1773,7 @@ function animatePlayer(dt, t) {
   const target = showcase() ? -0.5 + Math.sin(t * 0.9) * 0.55 + choiceModelRotation : p.face > 0 ? -0.4 : Math.PI + 0.4;
   rig.model.rotation.y += angDiff(rig.model.rotation.y, target) * Math.min(1, dt * (showcase() ? 3 : 14));
   const speed = Math.abs(p.vx), mv = p.ground && speed > 30 ? 1 : 0;
+  const jumpCoil = p.ground ? 0 : clamp(1 - Math.abs(p.vy) / 650, 0, 1);
   p.phase += dt * (6 + speed / 28) * (mv ? 1 : 0);
   const sw = Math.sin(p.phase);
   rig.legs.forEach((leg, i) => {
@@ -1741,6 +1786,13 @@ function animatePlayer(dt, t) {
     else a.rotation.z = (i ? -sw : sw) * 0.7 * mv + (p.ground || showcase() ? 0.1 : -0.5);
   });
   rig.tail.forEach((s, i) => { s.rotation.y = Math.sin(t * 5 + i * 0.7) * 0.22 * (1 + mv); s.rotation.z = -0.04 * i + Math.sin(t * 4 + i) * 0.05 + (mv ? 0.05 : 0); });
+  rig.bodySegments.forEach((segment, i) => {
+    const wave = Math.sin(t * 8 - i * 0.9 + p.phase) * (0.025 + mv * 0.035);
+    const arc = (i - 1.5) * jumpCoil;
+    segment.position.y = segment.userData.baseY + wave + Math.abs(arc) * 0.035;
+    segment.rotation.z = Math.sin(t * 7 - i * 0.85 + p.phase) * (0.04 + mv * 0.08) + arc * 0.13;
+    if (p.curl > 0) segment.rotation.z += (i - 1.5) * 0.12;
+  });
   const flapping = !p.ground && mode === 'play';
   const flap = flapping ? (p.gliding ? 0.15 : Math.sin(t * 18) * 0.9) : 0.2 + Math.sin(t * 2) * 0.05;
   rig.wings.forEach(w => { w.rotation.x = -w.userData.side * (p.gliding ? 0.05 : flap); });
@@ -1748,7 +1800,7 @@ function animatePlayer(dt, t) {
   rig.glands.forEach(m => { m.emissiveIntensity = 0.55 + 0.4 * Math.sin(t * 3); });
   if (rig.glow) rig.glow.material.opacity = 0.1 + 0.05 * Math.sin(t * 2.5);
   rig.torso.rotation.z = -Math.min(1, speed / stats.speed) * 0.12 - (p.dashT > 0 ? 0.35 : 0);
-  rig.torso.scale.y = 1 + 0.02 * Math.sin(t * 3);
+  rig.torso.scale.y = 1 + 0.025 * Math.sin(t * 3) + (p.ground ? 0 : 0.035);
   const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
   rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : p.curl > 0 ? 1.1 : 1),
     bs * (1 + st) * (p.curl > 0 ? 0.62 : 1), bs * (1 - st * 0.5));
