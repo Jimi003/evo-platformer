@@ -73,7 +73,7 @@ const Snd = (() => {
     lastPlayed[name] = now;
     if (FX[name]) FX[name]();
   }
-  // Glasba: trije načini (meni = dvigalo/bossa nova, igra = pustolovska, šef = napeta) + ambient.
+  // Glasba: meni = dvigalo/bossa nova, igra = pustolovska, šef = lahkotno napeto + ambient.
   function note(f, t, dur, type, vol, bus) {
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = type; o.frequency.value = f;
@@ -104,7 +104,7 @@ const Snd = (() => {
   const MODES = {
     menu: { bpm: 88, prog: [[0, [0, 4, 7, 11]], [-3, [0, 3, 7, 10]], [2, [0, 3, 7, 10]], [-5, [0, 4, 7, 10]]] },
     game: { bpm: 116, prog: [[0, [0, 4, 7]], [7, [0, 4, 7]], [9, [0, 3, 7]], [5, [0, 4, 7]]] },
-    boss: { bpm: 142, prog: [[0, [0, 3, 7]], [-4, [0, 4, 7]], [-2, [0, 4, 7]], [-5, [0, 3, 6]]] },
+    boss: { bpm: 126, prog: [[0, [0, 4, 7]], [-5, [0, 4, 7]], [-3, [0, 4, 7]], [-7, [0, 4, 7]]] },
   };
   let cur = 'menu', key = 0, lastMel = 4;
   function schedule() {
@@ -129,13 +129,13 @@ const Snd = (() => {
         if (s % 2 === 1) hat(nextT, 0.04);
         if (s === 4) snare(nextT, 0.04);
       } else {
-        note(hz(r - 12), nextT, sp * 0.9, 'sawtooth', 0.2, musBus);
-        if (s % 2 === 1) note(hz(r), nextT, sp * 0.6, 'sawtooth', 0.09, musBus);
-        if (s % 4 === 0) kick(nextT, 0.65);
-        if (s === 2 || s === 6) snare(nextT, 0.15);
-        if (s === 0) ch.forEach(n => note(hz(r + 12 + n + (bar === 3 ? 1 : 0)), nextT, sp * 1.2, 'square', 0.075, musBus));
-        if (s % 2 === 0 && Math.random() < 0.55) note(hz(r + 24 + R([0, 3, 6, 7, 10])), nextT, sp * 0.8, 'sawtooth', 0.06, musBus);
-        hat(nextT, 0.06);
+        note(hz(r - 12), nextT, sp * 1.8, 'triangle', 0.14, musBus);
+        if (s % 2 === 1) note(hz(r + R(ch)), nextT, sp * 0.9, 'sine', 0.055, musBus);
+        if (s % 4 === 0) kick(nextT, 0.32);
+        if (s === 4) snare(nextT, 0.055);
+        if (s === 0) ch.forEach(n => note(hz(r + 12 + n), nextT, sp * 2.4, 'triangle', 0.045, musBus));
+        if (s % 2 === 0 && Math.random() < 0.4) note(hz(r + 24 + R([0, 2, 4, 7, 9])), nextT, sp * 1.2, 'triangle', 0.04, musBus);
+        if (s % 2 === 1) hat(nextT, 0.025);
       }
       nextT += sp; step++;
     }
@@ -161,10 +161,10 @@ const Snd = (() => {
     startAmbient();
     const t = ctx.currentTime, play = cur !== 'menu';
     windG.gain.setTargetAtTime(play ? (cur === 'boss' ? 0.07 : 0.09 + (1 - cloudFactor) * 0.045) : 0, t, 0.8);
-    droneG.gain.setTargetAtTime(cur === 'boss' ? 0.16 : 0, t, 0.8);
+    droneG.gain.setTargetAtTime(cur === 'boss' ? 0.08 : 0, t, 0.8);
     if (!play || muted || t < nextAmb) return;
     nextAmb = t + (cur === 'boss' ? 6 : 2 + Math.random() * 4);
-    if (cur === 'boss') { tone(70, 50, 1.2, 'sine', 0.16, 0, sfxBus); return; }
+    if (cur === 'boss') { tone(120, 94, 1.2, 'sine', 0.08, 0, sfxBus); return; }
     if (Math.random() < nightFactor) for (let i = 0; i < 4; i++) tone(4300 + moonFactor * 180, 4300 + moonFactor * 180, 0.03, 'square', 0.025, i * 0.07, sfxBus);
     else { const f = 1800 + Math.random() * 1500; [0, 0.11, 0.22].slice(0, 1 + Math.floor(Math.random() * 3)).forEach(d => tone(f, f * 1.4, 0.08, 'sine', 0.09, d, sfxBus)); }
   }
