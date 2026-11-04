@@ -147,6 +147,11 @@ const GENERIC = [
 ];
 const TRAIT_BY_ID = {};
 TRAITS.forEach(t => { TRAIT_BY_ID[t.id] = t; });
+for (const t of TRAITS) for (const id of t.excludes || []) {
+  const other = TRAIT_BY_ID[id];
+  if (!other.excludes) other.excludes = [];
+  if (!other.excludes.includes(t.id)) other.excludes.push(t.id);
+}
 function traitRequires(t) { return t.requires || (t.parent ? [t.parent] : []); }
 
 const SYNERGIES = [
@@ -200,9 +205,10 @@ function traitTier(t, memo = {}) {
 }
 function traitState(t, owned) {
   if (owned.has(t.id)) return 'owned';
-  if (!traitRequires(t).every(id => owned.has(id))) return 'locked';
   for (const o of owned) { const ot = TRAIT_BY_ID[o]; if (ot && (ot.excludes || []).includes(t.id)) return 'blocked'; }
   if ((t.excludes || []).some(e => owned.has(e))) return 'blocked';
+  if (traitRequires(t).some(id => !owned.has(id) && traitState(TRAIT_BY_ID[id], owned) === 'blocked')) return 'blocked';
+  if (!traitRequires(t).every(id => owned.has(id))) return 'locked';
   return 'open';
 }
 function nicheInvest(owned) {
@@ -235,7 +241,10 @@ function offers(owned, n = 3) {
   return out;
 }
 function bossOffers(owned) { return TRAITS.filter(t => t.boss && !owned.has(t.id)).slice(0, 3); }
-function opensWhat(t) { return TRAITS.filter(x => traitRequires(x).includes(t.id)).map(x => x.name); }
+function opensWhat(t, owned) {
+  const next = new Set([...owned, t.id]);
+  return TRAITS.filter(x => traitRequires(x).includes(t.id) && traitState(x, owned) !== 'open' && traitState(x, next) === 'open').map(x => x.name);
+}
 function closesWhat(t, owned) {
   const next = new Set([...owned, t.id]);
   return TRAITS.filter(x => !owned.has(x.id) && x.id !== t.id
@@ -248,4 +257,28 @@ function lineage(owned) {
     if (list.length) out.push({ niche: k, text: list.map(t => t.name).join(' › ') });
   }
   return out;
+}
+function creatureIdentity(owned) {
+  const ranked = Object.entries(nicheInvest(owned)).filter(([, score]) => score > 0).sort((a, b) => b[1] - a[1]);
+  if (!ranked.length) return 'Sluz';
+  const primary = ranked[0][0], secondary = ranked[1] && ranked[1][0];
+  const identities = {
+    'land:air': 'Rastlinski letalec', 'air:land': 'Zračni vrtnar',
+    'predator:air': 'Krilati plenilec', 'air:predator': 'Zračni lovec',
+    'water:air': 'Vodni jadralec', 'air:water': 'Vodni letalec',
+    'land:predator': 'Rastlinski lovec', 'predator:land': 'Zeleni plenilec',
+    'water:predator': 'Vodni plenilec', 'predator:water': 'Vodna zver',
+    'fire:water': 'Parni plenilec', 'water:fire': 'Parni lovec',
+    'venom:predator': 'Strupeni plenilec', 'predator:venom': 'Strupeni lovec',
+    'bulwark:predator': 'Oklepni plenilec', 'predator:bulwark': 'Močni varuh',
+    'swift:predator': 'Hitri plenilec', 'predator:swift': 'Hitri lovec',
+    'land:water': 'Močvirski stvor', 'water:land': 'Močvirski varuh',
+    'fire:air': 'Ognjeni letalec', 'air:fire': 'Ognjeni zmaj',
+  };
+  if (secondary && identities[`${primary}:${secondary}`]) return identities[`${primary}:${secondary}`];
+  const single = {
+    predator: 'Plenilec', swift: 'Hitrostni tekač', bulwark: 'Oklepni varuh', venom: 'Strupeni lovec',
+    fire: 'Ognjeni stvor', water: 'Vodni stvor', land: 'Rastlinski stvor', air: 'Zračni letalec',
+  };
+  return single[primary];
 }

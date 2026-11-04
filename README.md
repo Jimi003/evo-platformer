@@ -14,9 +14,9 @@ Igro odpri na `http://localhost:8123`.
 
 ## Razvoj in zdravje
 
-Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. V premoru odpri radialno drevo: začetna sluz je v sredini, veje vodijo do nadaljnjih prilagoditev, barva vozlišča označuje njegovo nišo. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš ob pomiku kazalca nad vozlišče. Omejitve so prikazane posebej, zato izbira ene lastnosti ne zapre več samodejno vseh sorodnih vej.
+Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. V premoru odpri radialno drevo: v sredini je ime tvoje glavne nišne specializacije, obarvana vozlišča pa kažejo nišo posamezne prilagoditve. Drevo lahko premikaš z vlečenjem in približaš ali oddaljiš z miškinim koleščkom; oblika vozlišča označuje njegovo razvojno smer. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš ob pomiku kazalca nad vozlišče. Kartice in drevo prikazujejo le veje, ki so ob upoštevanju že izbranih nezdružljivih prilagoditev še dosegljive.
 
-Med izbiro izboljšave so prikazane trenutne statistike stvora. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+Med izbiro izboljšave so prikazane trenutne statistike stvora. Lik obračaš z vlečenjem miške; levi klik napade, desni pa izvede odklenjeni sunek. Telesna oblika se postopno razvija z vlaganjem v niše in prilagoditve. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
 
 ## Dnevno-nočni cikel
 
