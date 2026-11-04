@@ -16,7 +16,9 @@ Igro odpri na `http://localhost:8123`.
 
 Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. V premoru odpri radialno drevo: v sredini je ime tvoje glavne nišne specializacije, obarvana vozlišča pa kažejo nišo posamezne prilagoditve. Drevo lahko premikaš z vlečenjem in približaš ali oddaljiš z miškinim koleščkom; oblika vozlišča označuje njegovo razvojno smer. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš ob pomiku kazalca nad vozlišče. Kartice in drevo prikazujejo le veje, ki so ob upoštevanju že izbranih nezdružljivih prilagoditev še dosegljive.
 
-Med izbiro izboljšave so prikazane trenutne statistike stvora. Lik obračaš z vlečenjem miške; levi klik napade, desni pa izvede odklenjeni sunek. Telesna oblika se postopno razvija z vlaganjem v niše in prilagoditve. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+Med izbiro izboljšave so prikazane trenutne statistike stvora. Lik obračaš z vlečenjem miške; levi klik napade, desni pa izvede odklenjeni sunek. Telesna oblika se postopno razvija z vlaganjem v niše in prilagoditve: okončine se podaljšujejo z razvojem, perje in krila pa dobivajo več podrobnosti. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+
+V nekaterih stopnjah se pojavi skriti brlog, povezan z eno od tvojih razvitih niš. Poišči kamniti vhod, se mu približaj in pritisni **F**; ob zaključku stopnje dobiš do tri ponudbe starodavnih, edinstvenih prilagoditev in izbereš eno. Šefi se izmenjujejo med Tiranom, Koreninsko matriarhinjo in Nevihtnim zmajem, vsak z drugačnim videzom in napovedanimi napadi.
 
 ## Dnevno-nočni cikel
 

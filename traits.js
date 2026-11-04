@@ -115,19 +115,26 @@ T('gust', 'Sunek vetra', 'air', 'thermals', 'odkleneš hiter sunek (K / Shift), 
 T('stormcloud', 'Nevihtni oblak', 'air', 'thermals', 'ob pristanku udariš ob tla in dobiš dodaten skok', s => { s.stomp = true; s.airJumps += 1; });
 T('tempest', 'Vihar', 'air', 'bolt', 'strela lahko zadene do 5 sovražnikov', s => { s.boltN = 5; });
 T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši napadi in močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { requires: ['conduct', 'thermals'], scale: 1.1 });
+// Skrite starodavne prilagoditve so na voljo samo kot nagrada za raziskovanje brlogov.
+T('heartroot', 'Koreninsko srce', 'land', null, '+2 zdravja in počasna obnova (+0,25 zdravja/s)', s => { s.maxHp += 2; s.regen += 0.25; }, { secret: true });
+T('tidalheart', 'Srce globin', 'water', null, '+1 zdravje; tvoji napadi upočasnijo sovražnike', s => { s.maxHp += 1; s.chill = true; }, { secret: true, excludes: ['ember'] });
+T('skyshroud', 'Plašč prvih vetrov', 'air', null, 'dobiš drsenje in dodaten skok v zraku', s => { s.glide = true; s.glideFall = 85; s.airJumps += 1; }, { secret: true, excludes: ['carapace', 'gel', 'bulk'] });
+T('worldfang', 'Očnjak pradavnine', 'predator', null, '+0,5 škode, +12 dosega in močnejši odriv', s => { s.dmg += 0.5; s.reach += 12; s.knock += 45; }, { secret: true });
+T('ironbloom', 'Železni cvet', 'bulwark', null, '+2 zdravja in +1 škode ob dotiku', s => { s.maxHp += 2; s.thorns += 1; }, { secret: true });
+T('ancientspore', 'Starodavne spore', 'venom', null, '+0,5 strupa; zastrupitev se širi ob porazu sovražnika', s => { s.poison += 0.5; s.poisonDur += 1; s.spread = true; }, { secret: true });
 // --- Nagrade za šefa (ena na šefa) ---
 T('bossheart', 'Tiranovo srce', 'boss', null, '+5 zdravja in +1 škode', s => { s.maxHp += 5; s.dmg += 1; }, { boss: true });
 T('cracker', 'Lomilec oklepa', 'boss', null, 'prebiješ sovražnikov oklep in povzročiš +0,5 škode', s => { s.pierce = true; s.dmg += 0.5; }, { boss: true });
 T('alpha', 'Alfa naskok', 'boss', null, 'tečeš in napadaš hitreje; odkleneš močnejši sunek', s => { s.atkCd *= 0.75; s.speed += 40; s.dash = true; s.dashDmg += 1; }, { boss: true });
 
 const TRAIT_DIMENSIONS = {
-  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'fins', 'tentacle', 'roots', 'vines', 'feathers'],
+  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'fins', 'tentacle', 'roots', 'vines', 'feathers', 'skyshroud'],
   movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'gust', 'stormcloud', 'gale', 'alpha'],
   offense: ['rending', 'frenzy', 'cleave', 'apex', 'ram', 'breaker', 'gore', 'spit', 'plague', 'ambush', 'roar', 'trample',
     'meteor', 'quills', 'miasma', 'epidemic', 'neuro', 'ember', 'breath', 'scorch', 'inferno', 'cinder', 'frost', 'torrent',
-    'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker'],
+    'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker', 'worldfang', 'ancientspore'],
   survival: ['carapace', 'fat', 'spikes', 'shell', 'barbed', 'regen', 'bulk', 'undying', 'camo', 'cloud', 'slow', 'titan',
-    'bastion', 'colossus', 'molten', 'magma', 'iceshell', 'leviathan', 'bloom', 'thornvine', 'spores', 'canopy', 'treant', 'bossheart'],
+    'bastion', 'colossus', 'molten', 'magma', 'iceshell', 'leviathan', 'bloom', 'thornvine', 'spores', 'canopy', 'treant', 'bossheart', 'heartroot', 'tidalheart', 'ironbloom'],
 };
 const TRAIT_DIMENSION = {};
 for (const [dimension, ids] of Object.entries(TRAIT_DIMENSIONS)) {
@@ -226,7 +233,7 @@ function offers(owned, n = 3) {
   const inv = nicheInvest(owned);
   const dimInv = dimensionInvest(owned);
   const full = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 3;
-  const pool = TRAITS.filter(t => !t.boss && !(full && t.active) && traitState(t, owned) === 'open')
+  const pool = TRAITS.filter(t => !t.boss && !t.secret && !(full && t.active) && traitState(t, owned) === 'open')
     .map(t => ({ t, w: (1 + 2.5 * inv[t.niche]) * (1 + 0.6 / (1 + dimInv[t.dimension])) }));
   const out = [];
   const leastInvested = Math.min(...pool.map(x => dimInv[x.t.dimension]));
@@ -241,6 +248,14 @@ function offers(owned, n = 3) {
   return out;
 }
 function bossOffers(owned) { return TRAITS.filter(t => t.boss && !owned.has(t.id)).slice(0, 3); }
+function secretOffers(owned) {
+  const pool = TRAITS.filter(t => t.secret && traitState(t, owned) === 'open');
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, 3);
+}
 function opensWhat(t, owned) {
   const next = new Set([...owned, t.id]);
   return TRAITS.filter(x => traitRequires(x).includes(t.id) && traitState(x, owned) !== 'open' && traitState(x, next) === 'open').map(x => x.name);

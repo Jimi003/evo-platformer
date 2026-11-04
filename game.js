@@ -198,7 +198,7 @@ function buildRoomScene() {
     scene.remove(roomGroup); roomMats.forEach(m => m.dispose()); roomTextures.forEach(t => t.dispose());
     roomGeometries.forEach(g => g.dispose()); if (skyTex) skyTex.dispose();
   }
-  fruitRig = null;
+  fruitRig = null; secretRig = null;
   dayNightRig = null;
   waterFlowTexture = null;
   roomMats = []; roomTextures = []; roomGeometries = []; fireflies = []; cloudGroups = []; birds = [];
@@ -320,6 +320,7 @@ function buildRoomScene() {
   }
   if (wetLevel && wetLevel.active) addWetScenery(th, M);
   if (fruitTree) addFruitTreeToRoom();
+  if (secretSite) addSecretCave();
   dayNightRig = { sun: sunMesh, moon: moonMesh, sunGlow, moonGlow, stars: starM, halo: sunHalo.material, haloMesh: sunHalo,
     shafts: shaftM, fireflies: fireflyM, clouds: cloudGroups, cloudMaterial: cloudM };
   updateDayNight(0, true);
@@ -483,6 +484,25 @@ function addFruitTreeToRoom() {
   }
   fruitRig = { group, fruit, stem, petals };
 }
+function addSecretCave() {
+  const gate = SECRET_GATES[secretSite.gate], x = wx(secretSite.x), ground = wy(500);
+  const group = new THREE.Group(); roomGroup.add(group);
+  const stone = stdMat('#62616a'), shadow = stdMat('#171824');
+  roomMats.push(stone, shadow);
+  const sigil = glowMat(gate.color, 0.9); roomMats.push(sigil);
+  mk(group, GEO.sph, shadow, [x, ground + 0.38, -1.85], [0.38, 0.48, 0.09]).castShadow = false;
+  const arch = mk(group, GEO.torus, stone, [x, ground + 0.4, -1.95], [0.48, 0.54, 0.12]);
+  arch.castShadow = false;
+  for (const side of [-1, 1]) {
+    mk(group, GEO.ico, stone, [x + side * 0.38, ground + 0.12, -1.92], [0.25, 0.2, 0.3],
+      [0.2 * side, 0.5, 0.1]).castShadow = false;
+    mk(group, GEO.ico, stone, [x + side * 0.27, ground + 0.7, -1.92], [0.23, 0.17, 0.27],
+      [0.1, 0.2 * side, 0.1]).castShadow = false;
+  }
+  const mark = mk(group, GEO.sph, sigil, [x, ground + 0.4, -1.78], [0.075, 0.075, 0.03]);
+  mark.castShadow = false;
+  secretRig = { group, mark, sigil };
+}
 
 // ---------- Delci in obrazi ----------
 let particles = [];
@@ -523,7 +543,19 @@ function normalizeDifficulty(value) { return value === 'easy' || value === 'chal
 function difficultyLabel() { return difficulty === 'easy' ? 'lažja' : difficulty === 'challenge' ? 'izzivna' : 'težja'; }
 try { difficulty = normalizeDifficulty(localStorage.getItem('evo-difficulty')); } catch (e) { /* privzeto težja težavnost */ }
 let room = 0, mode = 'menu', platforms = [], enemies = [], shots = [], pshots = [], player = null, dayCycleTime = 0;
-let fruitPending = false, fruitTree = null;
+let fruitPending = false, fruitTree = null, secretSite = null, secretRewardPending = false, secretRig = null;
+const SECRET_GATES = {
+  predator: { name: 'Plenilca', color: '#e0453f' },
+  water: { name: 'Vodo', color: '#3b6bff' },
+  land: { name: 'Rastline', color: '#18b86a' },
+  air: { name: 'Zrak', color: '#d9e2ff' },
+};
+const BOSS_TYPES = ['tyrant', 'matriarch', 'storm'];
+const BOSS_NAMES = { tyrant: 'TIRAN', matriarch: 'KORENINSKA MATRIARHINJA', storm: 'NEVIHTNI ZMAJ' };
+function bossTypeForRoom(level) {
+  const index = ((Math.floor(level / 5) - 1) % BOSS_TYPES.length + BOSS_TYPES.length) % BOSS_TYPES.length;
+  return BOSS_TYPES[index];
+}
 const showcase = () => mode === 'choose' || mode === 'menu';
 // Rekord se shrani v brskalnik (localStorage).
 let best = { room: 0, bosses: 0, build: '' };
@@ -557,6 +589,7 @@ function saveGame() {
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
     room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel,
+    secretSite, secretRewardPending,
     player: savedPlayer,
     platforms,
     enemies: enemies.map(e => plain(e, ['rig'])),
@@ -591,8 +624,12 @@ function loadSavedGame() {
     fruitPending = data.fruitPending === true;
     fruitTree = data.fruitTree && Number.isFinite(data.fruitTree.x) && Number.isFinite(data.fruitTree.y)
       ? Object.assign({ age: 0, fall: 0, fallen: false }, data.fruitTree) : null;
+    secretSite = data.secretSite && Number.isFinite(data.secretSite.x) && SECRET_GATES[data.secretSite.gate] && !data.secretSite.found
+      ? Object.assign({ found: false }, data.secretSite) : null;
+    secretRewardPending = data.secretRewardPending === true;
     platforms = data.platforms.map(p => p.x === 0 && p.y === 500 ? Object.assign({}, p, { w: WORLD_W }) : p);
-    enemies = data.enemies.map(e => Object.assign({ chargeT: 0, chargeCd: 3, chargeDir: -1 }, e));
+    enemies = data.enemies.map(e => Object.assign({ bossType: e.kind === 'boss' ? bossTypeForRoom(room) : null, chargeT: 0, chargeCd: 3, chargeDir: -1,
+      bossMove: 'idle', bossTellT: 0, bossTargetX: 0, bossPattern: 0 }, e));
     player = Object.assign(newPlayer(), data.player, {
       atkHit: new Set((data.player.atkHit || []).map(i => enemies[i]).filter(Boolean)),
       dashHit: new Set((data.player.dashHit || []).map(i => enemies[i]).filter(Boolean)),
@@ -610,12 +647,15 @@ function loadSavedGame() {
     return false;
   }
 }
-function spawnEnemy(kind, x, y) {
-  const sz = { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
+function spawnEnemy(kind, x, y, bossType) {
+  const type = kind === 'boss' ? (bossType || bossTypeForRoom(room)) : null;
+  const sz = kind === 'boss' && type === 'matriarch' ? [64, 70] : kind === 'boss' && type === 'storm' ? [60, 62]
+    : { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
   const baseHp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
   const hp = baseHp * (difficulty === 'challenge' ? 1.2 : 1);
-  const e = { kind, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
+  const e = { kind, bossType: type, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
     flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, chargeT: 0, chargeCd: 3, chargeDir: -1,
+    bossMove: 'idle', bossTellT: 0, bossTargetX: 0, bossPattern: 0,
     poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, chillT: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
   enemies.push(e);
   return e;
@@ -629,9 +669,15 @@ function clearObjects() {
 function removeRig(e) { if (e.rig) { scene.remove(e.rig.root); disposeObj(e.rig.root); e.rig = null; } }
 function removeObj(b) { if (b.obj) { scene.remove(b.obj); disposeObj(b.obj); b.obj = null; } }
 
+function makeSecretSite() {
+  const gates = Object.keys(SECRET_GATES).filter(niche => [...owned].some(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === niche));
+  if (!gates.length || !secretOffers(owned).length || Math.random() > 0.3) return null;
+  return { x: rand(260, WORLD_W - 260), gate: gates[Math.floor(Math.random() * gates.length)], found: false };
+}
 function startRoom() {
   room++;
   clearObjects();
+  secretSite = makeSecretSite();
   const waterTraits = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === 'water').length;
   const wetChance = clamp(0.1 + waterTraits * 0.2, 0.1, 0.85);
   wetLevel = Math.random() < wetChance
@@ -658,7 +704,7 @@ function startRoom() {
     if (!platforms.some(q => q.rock && Math.abs(q.x - x) < 130)) platforms.push({ x, y: 500 - 26, w, h: 26, rock: true, seed: Math.random() });
   }
   const isBoss = room % 5 === 0;
-  if (isBoss) spawnEnemy('boss', WORLD_W - 240, 300);
+  if (isBoss) spawnEnemy('boss', WORLD_W - 240, 300, bossTypeForRoom(room));
   const count = isBoss ? 2 : 2 + room;
   for (let i = 0; i < count; i++) {
     const kinds = ['walker'];
@@ -842,6 +888,19 @@ function updateFruit(dt) {
     Snd.play('pick');
   }
 }
+function updateSecret() {
+  if (!secretSite || secretSite.found) return;
+  const gate = SECRET_GATES[secretSite.gate], near = Math.abs(player.x + player.w / 2 - secretSite.x) < 88;
+  if (secretRig) secretRig.sigil.emissiveIntensity = near ? 1.8 : 0.65;
+  if (near && hit('KeyF')) {
+    secretSite.found = true;
+    secretRewardPending = true;
+    burst(secretSite.x, 452, gate.color, 24);
+    ring(secretSite.x, 452, gate.color, 90, 0.6);
+    toast('Skriti brlog odkrit! Ob zaključku stopnje te čaka starodavna prilagoditev.', 3);
+    Snd.play('pick');
+  }
+}
 
 // ---------- Posodobitev ----------
 function updatePlay(dt) {
@@ -883,6 +942,7 @@ function updatePlay(dt) {
   const vy0 = p.vy, wasG = p.ground;
   moveBody(p, dt);
   updateFruit(dt);
+  updateSecret();
   if (p.ground && !wasG) {
     if (p.meteor && p.meteorUp <= 0) { p.meteor = false; blast(p.x + 14, p.y + 36, 190, 3 + s.dmg * 1.5, '#ffb347'); }
     else if (vy0 > 300) { burst(p.x + 14, p.y + 36, '#cfc6b0', 5); ring(p.x + 14, p.y + 36, '#ffffff', 28, 0.25); }
@@ -913,23 +973,82 @@ function updatePlay(dt) {
         e.vx = e.face * (boss ? (rage ? 100 : 55) : 45);
         if (boss) {
           e.chargeCd -= dt;
-          if (e.chargeT > 0) {
+          if (e.bossType === 'matriarch') {
+            e.vx = e.face * (rage ? 48 : 30);
+            if (e.bossMove === 'rootTell') {
+              e.bossTellT = Math.max(0, e.bossTellT - dt);
+              e.vx = 0;
+              if (e.bossTellT === 0) {
+                for (const offset of [-36, 0, 36]) shots.push({
+                  x: e.bossTargetX + offset, y: 492, vx: 0, vy: -500, r: 9, enemyShot: true, color: '#88e05d',
+                });
+                e.bossMove = 'idle';
+                e.chargeCd = rage ? 3.4 : 5.1;
+              }
+            } else if (e.chargeCd <= 0 && Math.abs(dx) < 650) {
+              e.bossMove = 'rootTell';
+              e.bossTellT = rage ? 0.65 : 0.9;
+              e.bossTargetX = clamp(p.x + p.w / 2, 90, WORLD_W - 90);
+              for (const offset of [-36, 0, 36]) ring(e.bossTargetX + offset, 492, '#88e05d', 48, e.bossTellT);
+            }
+          } else if (e.bossType === 'storm') {
+            e.vx = e.face * (rage ? 88 : 62);
+            if (e.bossMove === 'stormTell') {
+              e.vx = 0;
+              e.bossTellT = Math.max(0, e.bossTellT - dt);
+              if (e.bossTellT === 0) {
+                for (const offset of [-64, 0, 64]) shots.push({
+                  x: e.bossTargetX + offset, y: 0, vx: 0, vy: 600, r: 9, enemyShot: true, color: '#fff35a',
+                });
+                e.bossMove = 'idle';
+                e.chargeCd = rage ? 3.5 : 5;
+              }
+            } else if (e.chargeCd <= 0 && Math.abs(dx) < 720) {
+              e.bossMove = 'stormTell';
+              e.bossTellT = rage ? 0.62 : 0.88;
+              e.bossTargetX = clamp(p.x + p.w / 2, 100, WORLD_W - 100);
+              for (const offset of [-64, 0, 64]) ring(e.bossTargetX + offset, 492, '#fff35a', 56, e.bossTellT);
+            }
+          } else if (e.bossMove === 'slamTell') {
+            e.bossTellT = Math.max(0, e.bossTellT - dt);
+            e.vx = 0;
+            if (e.bossTellT === 0) {
+              const targetX = e.bossTargetX;
+              e.bossMove = 'idle';
+              e.chargeCd = rage ? 3.8 : 5.2;
+              ring(targetX, 492, '#ff5364', 180, 0.5);
+              if (Math.abs(p.x + p.w / 2 - targetX) < 100 && p.y + p.h > 450) hurtPlayer(e, 1.5);
+              burst(targetX, 486, '#ff5364', 18);
+            }
+          } else if (e.chargeT > 0) {
             e.chargeT = Math.max(0, e.chargeT - dt);
             if (e.chargeT > 0.48) e.vx = 0;
             else e.vx = e.chargeDir * (rage ? 280 : 235);
             if (e.chargeT === 0) {
               e.chargeCd = rage ? 5 : 6.5;
+              e.bossMove = 'idle';
               e.stunT = 0.65;
               e.vx = 0;
               for (const dir of [-1, 1]) shots.push({ x: e.x + e.w / 2, y: 492, vx: dir * 190, vy: 0, r: 8, enemyShot: true, wave: true, color: '#ffb347' });
             }
           } else if (e.chargeCd <= 0 && Math.abs(dx) < 520) {
-            e.chargeT = 1.05;
-            e.chargeDir = e.dir;
-            e.face = e.chargeDir;
-            e.vx = 0;
+            if (e.bossPattern % 2 === 0) {
+              e.chargeT = 1.35;
+              e.chargeDir = e.dir;
+              e.face = e.chargeDir;
+              e.bossMove = 'chargeTell';
+              e.vx = 0;
+            } else {
+              e.bossMove = 'slamTell';
+              e.bossTellT = rage ? 0.7 : 0.9;
+              e.bossTargetX = clamp(p.x + p.w / 2, 80, WORLD_W - 80);
+              e.face = Math.sign(e.bossTargetX - (e.x + e.w / 2)) || e.face;
+              e.vx = 0;
+              ring(e.bossTargetX, 492, '#ff5364', 120, e.bossTellT);
+            }
+            e.bossPattern++;
           }
-          if (e.chargeT <= 0) {
+          if (e.bossType === 'tyrant' && e.chargeT <= 0 && e.bossMove !== 'slamTell') {
             e.shootT -= dt;
             if (e.shootT <= 0) {
               e.shootT = rage ? 1.6 : 2.6;
@@ -1027,7 +1146,7 @@ function updatePlay(dt) {
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
   run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; moonCycleTime = DAY_CYCLE_SECONDS * 4;
-  choice = null; fruitPending = false; fruitTree = null; wetLevel = null;
+  choice = null; fruitPending = false; fruitTree = null; wetLevel = null; secretSite = null; secretRewardPending = false;
 }
 function beginGame() {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* nov tek se kljub temu začne */ }
@@ -1072,7 +1191,7 @@ function drawMenu() {
   }
   ui.fillStyle = '#aab'; ui.font = '13px monospace';
   ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J/levi klik: napad', W / 2, 504);
-  ui.fillText('K/Shift/desni klik: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
+  ui.fillText('K/Shift/desni klik: sunek · L: izstrelek · E/Q/R: sposobnosti · F: skriti brlog · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
@@ -1132,6 +1251,7 @@ function drawTree() {
   ui.fillText('Povleci za premik · kolešček za povečavo · barva označuje nišo · oblika razvojno smer.', W / 2, 62);
   treeNodeBoxes = [];
   const center = { x: W / 2, y: 270 };
+  const treeTraits = TRAITS.filter(trait => !trait.secret || owned.has(trait.id));
   ui.save();
   ui.beginPath(); ui.rect(12, 72, W - 24, 408); ui.clip();
   ui.translate(treeView.x, treeView.y);
@@ -1139,7 +1259,7 @@ function drawTree() {
   const sector = { body: -Math.PI / 2, movement: 0, offense: Math.PI / 2, survival: Math.PI };
   const positions = new Map();
   const tiers = new Map();
-  for (const trait of TRAITS) {
+  for (const trait of treeTraits) {
     const key = `${trait.dimension}:${traitTier(trait)}`;
     if (!tiers.has(key)) tiers.set(key, []);
     tiers.get(key).push(trait);
@@ -1154,7 +1274,7 @@ function drawTree() {
     });
   }
   for (const p of positions.values()) { p.x = center.x + p.x; p.y = center.y + p.y; }
-  for (const trait of TRAITS) {
+  for (const trait of treeTraits) {
     const to = positions.get(trait.id);
     if (!to) continue;
     const requirements = traitRequires(trait);
@@ -1300,6 +1420,7 @@ function endRoom(boss) {
   Snd.play('clear'); Snd.music(boss ? 'boss' : 'game', room);
   if (saveBest(room) && room > 1) toast('Nov rekord: ' + room + '. stopnja!', 2.5);
   queue = difficulty === 'easy' ? (boss ? ['evo', 'evo', 'boss'] : ['evo', 'evo']) : (boss ? ['evo', 'boss'] : ['evo']);
+  if (secretRewardPending) { queue.push('secret'); secretRewardPending = false; }
   picksTotal = queue.length; picksDone = 0;
   nextChoice();
 }
@@ -1307,7 +1428,7 @@ let picksTotal = 2, picksDone = 0;
 function nextChoice() {
   while (queue.length) {
     const k = queue.shift();
-    const opts = k === 'boss' ? bossOffers(owned) : offers(owned, 3);
+    const opts = k === 'boss' ? bossOffers(owned) : k === 'secret' ? secretOffers(owned) : offers(owned, 3);
     if (opts.length) { choice = { kind: k, options: opts, hover: -1 }; choiceCool = 0.4; choiceModelRotation = 0; return; }
   }
   choice = null;
@@ -1504,7 +1625,7 @@ function animatePlayer(dt, t) {
 }
 function animateEnemies(dt, t) {
   for (const e of enemies) {
-    if (!e.rig) { e.rig = buildEnemy(e.kind); scene.add(e.rig.root); }
+    if (!e.rig) { e.rig = buildEnemy(e.kind, e.bossType); scene.add(e.rig.root); }
     const rig = e.rig;
     rig.root.position.set(wx(e.x + e.w / 2), wy(e.y + e.h), 0);
     const face = (e.kind === 'armored' || e.kind === 'boss') ? e.face : e.dir;
@@ -1521,11 +1642,19 @@ function animateEnemies(dt, t) {
     if (rig.head) rig.head.rotation.z = Math.sin(t * 2 + e.t) * 0.12 - (e.shootT < 0.4 ? 0.4 : 0);
     if (rig.stalk) rig.stalk.rotation.z = -0.24 + Math.sin(t * 2.2 + e.t) * 0.06;
     if (rig.sac) rig.sac.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(t * 5 + e.t);
+    const slamming = e.kind === 'boss' && e.bossMove === 'slamTell';
+    const rooting = e.kind === 'boss' && e.bossMove === 'rootTell';
+    const storming = e.kind === 'boss' && e.bossMove === 'stormTell';
     const charging = e.kind === 'boss' && e.chargeT > 0.48;
-    setGlow(rig, charging ? '#ffd24a' : e.chillT > 0 && !(e.flash > 0) && !(e.burnT > 0) ? '#8fd8ff' : e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff',
-      charging ? 1.15 : e.flash > 0 ? 0.9 : e.burnT > 0 ? 0.5 : e.chillT > 0 ? 0.4 : e.poisT > 0 ? 0.35 : 0);
+    setGlow(rig, rooting ? '#9be15d' : storming ? '#fff35a' : slamming ? '#ff5364' : charging ? '#ffd24a' : e.chillT > 0 && !(e.flash > 0) && !(e.burnT > 0) ? '#8fd8ff' : e.burnT > 0 && !(e.flash > 0) ? '#ff6a1a' : e.poisT > 0 && !(e.flash > 0) ? '#b455d6' : '#ffffff',
+      rooting || storming || slamming || charging ? 1.25 : e.flash > 0 ? 0.9 : e.burnT > 0 ? 0.5 : e.chillT > 0 ? 0.4 : e.poisT > 0 ? 0.35 : 0);
     if (rig.weakpoint) rig.weakpoint.material.emissiveIntensity = 1.4 + 0.5 * Math.sin(t * 7 + e.t);
-    if (e.kind === 'boss') rig.model.scale.setScalar(1.65 * (charging ? 1 + 0.04 * Math.sin(t * 22) : 1));
+    if (rig.wings.length) rig.wings.forEach(w => { w.rotation.x = w.userData.side * (0.18 + Math.sin(t * 8 + e.t) * 0.22); });
+    if (e.kind === 'boss') {
+      const base = e.bossType === 'matriarch' ? 1.5 : e.bossType === 'storm' ? 1.58 : 1.65;
+      const pulse = slamming || rooting || storming ? 1 + 0.05 * Math.sin(t * 18) : charging ? 1 + 0.04 * Math.sin(t * 22) : 1;
+      rig.model.scale.setScalar(base * pulse);
+    }
   }
   for (const b of shots.concat(pshots)) {
     if (!b.obj) {
@@ -1591,7 +1720,24 @@ function drawHUD() {
   const boss = enemies.find(e => e.kind === 'boss');
   if (boss) {
     ui.fillStyle = '#222a'; ui.fillRect(300, 14, 360, 14); ui.fillStyle = '#e53935'; ui.fillRect(300, 14, 360 * Math.max(0, boss.hp) / boss.maxHp, 14);
-    ui.fillStyle = '#fff'; ui.textAlign = 'center'; ui.fillText('ŠEF', 480, 46); ui.textAlign = 'left';
+    ui.fillStyle = '#fff'; ui.textAlign = 'center'; ui.fillText(BOSS_NAMES[boss.bossType] || 'ŠEF', 480, 46); ui.textAlign = 'left';
+    const warning = boss.bossMove === 'slamTell' ? 'ZEMELJSKI UDAR · UMAKNI SE ALI SKOČI'
+      : boss.bossMove === 'rootTell' ? 'KORENINSKI IZBRUH · ODSKOČI'
+        : boss.bossMove === 'stormTell' ? 'NEVIHTNI UDAR · IZMAKNI SE'
+          : boss.chargeT > 0.48 ? 'NASKOK · PRIPRAVI SE NA SKOK' : '';
+    if (warning) {
+      ui.textAlign = 'center'; ui.font = 'bold 13px monospace';
+      ui.fillStyle = boss.bossMove === 'rootTell' ? '#b6f189' : boss.bossMove === 'stormTell' ? '#fff35a' : boss.bossMove === 'slamTell' ? '#ff8791' : '#ffe08a';
+      ui.fillText(warning, 480, 64); ui.textAlign = 'left';
+    }
+  }
+  if (secretSite && !secretSite.found && Math.abs(player.x + player.w / 2 - secretSite.x) < 88) {
+    const gate = SECRET_GATES[secretSite.gate];
+    ui.fillStyle = 'rgba(4,7,16,.88)'; ui.fillRect(255, H - 84, 450, 30);
+    ui.strokeStyle = gate.color; ui.lineWidth = 2; ui.strokeRect(255, H - 84, 450, 30);
+    ui.textAlign = 'center'; ui.font = 'bold 13px monospace'; ui.fillStyle = '#fff';
+    ui.fillText(`F · RAZIŠČI SKRITI BRLOG (${gate.name.toUpperCase()}) · STARODAVNA PRILAGODITEV`, 480, H - 64);
+    ui.textAlign = 'left';
   }
   stats.actives.forEach((id, i) => {
     const a = TRAIT_BY_ID[id].active, cd = Math.max(0, player.acd[id] || 0), x = 16 + i * 64, y = H - 70, f = cd / a.cd;
@@ -1607,11 +1753,17 @@ function drawHUD() {
 function drawChoose() {
   ui.fillStyle = 'rgba(4,7,16,.96)'; ui.fillRect(0, 310, W, H - 310);
   const boss = choice.kind === 'boss';
+  const secret = choice.kind === 'secret';
   ui.textAlign = 'center'; ui.font = 'bold 26px monospace';
-  ui.fillStyle = boss ? '#ffd54f' : '#fff';
-  ui.fillText(boss ? 'NAGRADA ZA PORAZ ŠEFA – izberi eno' : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`, W / 2, 44);
+  ui.fillStyle = boss ? '#ffd54f' : secret ? '#d9a7ff' : '#fff';
+  const title = boss ? 'NAGRADA ZA PORAZ ŠEFA – izberi eno'
+    : secret ? 'STARODAVNA PRILAGODITEV – izberi eno'
+      : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`;
+  ui.fillText(title, W / 2, 44);
   ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
-  ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.' : 'Povleci z levo tipko miške za obračanje lika · izberi z miško ali tipkami 1–3.', W / 2, 68);
+  ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.'
+    : secret ? 'Starodavne prilagoditve so edinstvene in na voljo samo v skritih brlogih.'
+      : 'Povleci z levo tipko miške za obračanje lika · izberi z miško ali tipkami 1–3.', W / 2, 68);
   const lin = lineage(owned);
   if (lin.length) {
     ui.fillStyle = 'rgba(7,10,20,.96)'; ui.fillRect(12, 88, 244, 154);
@@ -1657,8 +1809,9 @@ function drawChoose() {
       ui.fillStyle = '#fff'; ui.fillText('✦', r.x + 14, r.y + 17);
     }
     ui.fillStyle = '#fff';
-    const category = t.syn ? 'SINERGIJA' : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
-      : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
+    const category = t.syn ? 'SINERGIJA' : t.secret ? 'STARODAVNA · SKRITA'
+      : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
+        : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
     ui.fillText(category, r.x + (t.syn ? 28 : 12), r.y + 18);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
     ui.fillStyle = '#fff'; ui.font = 'bold 20px monospace'; ui.fillText(t.name, r.x + 10, r.y + 55);
@@ -1715,6 +1868,7 @@ function frame(now) {
     } else setPlayerModel(owned);
     animatePlayer(rawDt, time); animateEnemies(rawDt, time); updateCamera(rawDt, time);
   }
+  if (secretRig) secretRig.group.visible = !showcase();
   renderer.render(scene, camera);
   ui.clearRect(0, 0, W, H);
   if (player && mode !== 'menu') { if (mode !== 'choose') drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
