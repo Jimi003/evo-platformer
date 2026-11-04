@@ -49,6 +49,7 @@ const Snd = (() => {
     gale: () => { noise(0.6, 400, 4000, 0.3); tone(200, 800, 0.5, 'sine', 0.15); },
     blast: () => { tone(90, 30, 0.6, 'sawtooth', 0.55); noise(0.5, 1500, 60, 0.6, 'lowpass'); },
     bastion: () => { tone(330, 330, 0.5, 'triangle', 0.25); tone(495, 495, 0.5, 'triangle', 0.2, 0.05); },
+    curl: () => { noise(0.18, 900, 180, 0.35, 'lowpass'); tone(180, 90, 0.3, 'triangle', 0.25); },
     quills: () => noise(0.2, 4000, 1500, 0.3, 'highpass'),
     miasma: () => { noise(0.7, 500, 200, 0.4, 'lowpass'); tone(130, 90, 0.7, 'sine', 0.25); },
     epidemic: () => { tone(150, 60, 1.0, 'sawtooth', 0.3); noise(1.0, 600, 100, 0.35, 'lowpass'); },

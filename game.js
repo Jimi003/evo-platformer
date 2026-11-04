@@ -3,7 +3,7 @@ const W = 960, WORLD_W = 1440, H = 540, G = 1500, RW = 1280, RH = 720;
 const wx = x => x / 40, wy = y => (540 - y) / 40;
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const DAYLIGHT_SECONDS = 90, DUSK_DAWN_SECONDS = 30;
+const DAYLIGHT_SECONDS = 240, DUSK_DAWN_SECONDS = 30;
 const DAY_CYCLE_SECONDS = (DAYLIGHT_SECONDS + DUSK_DAWN_SECONDS) * 2;
 const LUNAR_CYCLE_SECONDS = DAY_CYCLE_SECONDS * 8;
 let dayNightLevel = 0, dayNightUpdateTimer = 0, dayNightRig = null;
@@ -57,8 +57,19 @@ const THEMES = [
   { sky: ['#2a0f14', '#f0903a'], fog: '#8a3a2a', ground: '#4a2a2a', top: '#e08a3a', far: '#4a1a1a', far2: '#8a3a2a', far3: '#c0602a', tree: '#7a2a2a', tree2: '#c04a2a', glow: '#ff9a4a', style: 'dead', stars: true, accent: '#ffcf4a' },
   { sky: ['#2a4a7a', '#e8f4ff'], fog: '#9ab8e0', ground: '#56688a', top: '#e8f4ff', far: '#6a86b8', far2: '#8aa6d0', far3: '#c0d4f0', tree: '#8ab0c8', tree2: '#e8f4ff', glow: '#ffffff', style: 'pine', stars: false, accent: '#9ad8ff' },
   { sky: ['#10061f', '#7a2a9a'], fog: '#3a1a5a', ground: '#2e2244', top: '#b455d6', far: '#241044', far2: '#4a2a7a', far3: '#7a3a9a', tree: '#5a2a8a', tree2: '#e29bff', glow: '#e29bff', style: 'mushroom', stars: true, accent: '#7affd0' },
+  { sky: ['#3478b8', '#d2f3ff'], fog: '#8ec6e8', ground: '#527b83', top: '#a8d7a1', far: '#397ba0', far2: '#65a9c5', far3: '#b4d9dd', tree: '#517f78', tree2: '#d1e8c7', glow: '#fff5c9', style: 'pine', stars: false, accent: '#c5f2ff' },
 ];
 let roomGroup = null, roomMats = [], roomTextures = [], roomGeometries = [], fireflies = [], cloudGroups = [], birds = [], skyTex = null, fruitRig = null, wetLevel = null, waterFlowTexture = null;
+let roomThemeIndex = 0;
+const NICHE_THEMES = { predator: 2, swift: 5, bulwark: 0, venom: 4, fire: 2, water: 3, land: 1, air: 5 };
+function chooseRoomTheme() {
+  const weights = THEMES.map(() => 1);
+  for (const niche of pathNiches(evolutionPath)) weights[NICHE_THEMES[niche]] += 2.5;
+  const invest = nicheInvest(owned);
+  for (const [niche, theme] of Object.entries(NICHE_THEMES)) weights[theme] += invest[niche] * 0.22;
+  let roll = Math.random() * weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.findIndex(weight => (roll -= weight) < 0);
+}
 function skyTexture(a, b) {
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
@@ -129,7 +140,7 @@ function updateDayNight(dt = 0, force = false) {
   const moonPhase = (moonCycleTime % LUNAR_CYCLE_SECONDS) / LUNAR_CYCLE_SECONDS;
   const moonIllumination = (1 - Math.cos(moonPhase * Math.PI * 2)) / 2;
   dayNightLevel = night;
-  const th = THEMES[(room - 1 + THEMES.length) % THEMES.length];
+  const th = THEMES[roomThemeIndex];
   const dayTop = new THREE.Color(th.sky[0]).lerp(new THREE.Color('#72b7e7'), 0.2);
   const dayBottom = new THREE.Color(th.sky[1]).lerp(new THREE.Color('#fff0bd'), 0.16);
   const top = dayTop.clone().lerp(new THREE.Color('#02040d'), night * 0.98).lerp(new THREE.Color('#df634f'), twilight * 0.58);
@@ -213,7 +224,7 @@ function buildRoomScene() {
   dayNightRig = null;
   waterFlowTexture = null;
   roomMats = []; roomTextures = []; roomGeometries = []; fireflies = []; cloudGroups = []; birds = [];
-  const th = THEMES[(room - 1) % THEMES.length];
+  const th = THEMES[roomThemeIndex];
   const M = (c, o) => { const m = stdMat(c, o); roomMats.push(m); return m; };
   roomGroup = new THREE.Group(); scene.add(roomGroup);
   skyTex = skyTexture(th.sky[0], th.sky[1]); scene.background = skyTex;
@@ -231,7 +242,7 @@ function buildRoomScene() {
       mk(roomGroup, GEO.ico, rockMat2, [(p.x + p.w / 2) / 40 + 0.25, wy(p.y) - 0.1, 0.5], [0.25, 0.18, 0.25], [p.seed * 3, 1, 0]);
       return;
     }
-    const ground = i === 0, w = ground ? WORLD_W / 40 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
+    const ground = i === 0, w = ground ? WORLD_W / 40 + 12 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
     const cx = ground ? WORLD_W / 80 : (p.x + p.w / 2) / 40, top = wy(p.y);
     mk(roomGroup, GEO.box, groundM, [cx, top - h / 2, 0], [w, h, d]).receiveShadow = true;
     const strip = mk(roomGroup, GEO.box, topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
@@ -244,7 +255,7 @@ function buildRoomScene() {
     }
     const n = ground ? 20 : Math.max(1, Math.round(w / 1.8));
     for (let k = 0; k < n; k++) {
-      const x = ground ? rand(-2, WORLD_W / 40 + 2) : cx + rand(-w / 2 + 0.2, w / 2 - 0.2), z = ground ? rand(-4.5, -1.2) : rand(-1.2, 1.2);
+      const x = ground ? rand(-8, WORLD_W / 40 + 8) : cx + rand(-w / 2 + 0.2, w / 2 - 0.2), z = ground ? rand(-4.5, -1.2) : rand(-1.2, 1.2);
       const r = Math.random();
       if (r < 0.45) spike(roomGroup, topM, [x, top, z], 0.07, rand(0.2, 0.45), [rand(-.3, .3), 0, rand(-.3, .3)]);
       else if (r < 0.75) mk(roomGroup, GEO.sph, rockM, [x, top + 0.1, z], [rand(.12, .3), rand(.1, .22), rand(.12, .3)]);
@@ -470,19 +481,29 @@ function updateWetScenery(dt) {
   if (waterFlowTexture) waterFlowTexture.offset.y = (waterFlowTexture.offset.y + dt * 0.28) % 1;
 }
 function addFruitTreeToRoom() {
-  const treeM = stdMat('#76502d'), leafM = stdMat('#4f9b4e'), fruitM = glowMat('#ff6d36', 0.8);
+  const treeM = stdMat('#76502d'), leafM = stdMat('#3c8748'), leafLightM = stdMat('#74b85a'), fruitM = glowMat('#ff6d36', 0.8);
   const petalM = new THREE.MeshStandardMaterial({ color: '#ffb9d1', roughness: 0.65, side: THREE.DoubleSide });
   const flowerM = stdMat('#ffd36a');
-  roomMats.push(treeM, leafM, fruitM, flowerM, petalM);
+  roomMats.push(treeM, leafM, leafLightM, fruitM, flowerM, petalM);
   const group = new THREE.Group(); roomGroup.add(group);
   const x = wx(fruitTree.x), ground = wy(500);
-  mk(group, GEO.cyl, treeM, [x, ground + 1.15, -0.5], [0.24, 1.15, 0.22]);
-  for (const side of [-1, 1]) {
-    const branch = mk(group, GEO.cyl, treeM, [x + side * 0.22, ground + 2.45, -0.5], [0.09, 0.7, 0.09], [0, 0, side * 0.75]);
+  const trunk = mk(group, GEO.taper, treeM, [x, ground + 1.3, -0.5], [0.2, 2.6, 0.18]);
+  trunk.castShadow = false;
+  for (let i = 0; i < 5; i++) {
+    const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+    const branch = mk(group, GEO.taper, treeM, [x + side * (0.25 + row * 0.08), ground + 1.65 + row * 0.32, -0.5],
+      [0.075 - row * 0.006, 0.86 - row * 0.08, 0.075 - row * 0.006], [0, 0, side * 0.82]);
     branch.castShadow = false;
   }
-  for (const [dx, dy, size] of [[0, 3.1, 0.72], [-0.38, 2.85, 0.5], [0.4, 2.85, 0.5]]) {
-    mk(group, GEO.sph, leafM, [x + dx, ground + dy, -0.55], [size, size * 0.75, size * 0.42]).castShadow = false;
+  for (let i = 0; i < 7; i++) {
+    const angle = i * Math.PI * 2 / 7, level = i < 5 ? 2.75 : 3.2;
+    const dx = Math.cos(angle) * (i < 5 ? 0.42 : 0.22), dz = Math.sin(angle) * 0.22;
+    const leaf = mk(group, GEO.cone, i % 2 ? leafM : leafLightM, [x + dx, ground + level, -0.5 + dz],
+      [0.48 - (i < 5 ? 0 : 0.08), 0.92, 0.32], [Math.sin(angle) * 0.2, 0, Math.cos(angle) * 0.28]);
+    leaf.castShadow = false;
+    const cluster = mk(group, GEO.sph, i % 2 ? leafLightM : leafM, [x + dx * 0.7, ground + level - 0.12, -0.54 + dz],
+      [0.26, 0.22, 0.2]);
+    cluster.castShadow = false;
   }
   const fruit = mk(group, GEO.sph, fruitM, [x, wy(fruitTree.y), 0.25], [0.06, 0.06, 0.06]);
   const stem = mk(group, GEO.cone, flowerM, [x, wy(fruitTree.y) + 0.1, 0.25], [0.035, 0.08, 0.035]);
@@ -548,7 +569,7 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 
 // ---------- Stanje igre ----------
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
-let evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
+let evolutionPath = { niches: [], founderPicks: 0 };
 let run = { revived: false, bosses: 0 }, points = 0;
 let difficulty = 'hard';
 function normalizeDifficulty(value) { return value === 'easy' || value === 'challenge' ? value : 'hard'; }
@@ -588,7 +609,7 @@ const SAVE_KEY = 'evo-save-v1';
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
     jumps: 0, atkT: 0, atkCd: 0, spitCd: 0, dashT: 0, dashCd: 0, inv: 0, hurtT: 0, shield: stats.shield,
-    atkHit: new Set(), dashHit: new Set(), phase: 0, acd: {}, haste: 0, bastion: 0, meteor: false, meteorUp: 0, breathT: 0 };
+    atkHit: new Set(), dashHit: new Set(), phase: 0, acd: {}, haste: 0, curl: 0, meteor: false, meteorUp: 0, breathT: 0 };
 }
 let saveNotice = '';
 function savedGameExists() {
@@ -600,7 +621,7 @@ function saveGame() {
   const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
-    room, difficulty, owned: [...owned], extras, run, evolutionPath, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel,
+    room, difficulty, owned: [...owned], extras, run, evolutionPath, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel, roomThemeIndex,
     secretSite, secretRewardPending,
     player: savedPlayer,
     platforms,
@@ -624,28 +645,28 @@ function loadSavedGame() {
       return false;
     }
     clearObjects();
-    owned = new Set(data.owned);
+    owned = new Set(data.owned.map(id => id === 'bastion' ? 'curl' : id));
     const oldPathTraits = [...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && !t.boss && !t.secret && !t.syn);
-    const inferredPrimary = oldPathTraits[0] && oldPathTraits[0].niche;
     const savedPath = data.evolutionPath || {};
     const validLineage = niche => NICHES[niche] && niche !== 'boss' && niche !== 'syn';
-    const primary = validLineage(savedPath.primary) ? savedPath.primary : inferredPrimary || null;
-    evolutionPath = {
-      primary,
-      secondary: validLineage(savedPath.secondary) && savedPath.secondary !== primary
-        && (!primary || !nichesConflict(primary, savedPath.secondary)) ? savedPath.secondary : null,
-      founderPicks: Number.isInteger(savedPath.founderPicks) ? clamp(savedPath.founderPicks, 0, 3) : Math.min(3, oldPathTraits.length),
-    };
-    if (!evolutionPath.secondary && evolutionPath.primary) {
-      const second = oldPathTraits.find(t => t.niche !== evolutionPath.primary && !nichesConflict(evolutionPath.primary, t.niche));
-      if (second) evolutionPath.secondary = second.niche;
+    const savedNiches = Array.isArray(savedPath.niches) ? savedPath.niches : [savedPath.primary, savedPath.secondary, savedPath.tertiary];
+    const candidateNiches = savedNiches.filter(validLineage);
+    if (!candidateNiches.length) {
+      for (const trait of oldPathTraits) if (candidateNiches.length < 3) candidateNiches.push(trait.niche);
     }
+    const niches = [];
+    for (const niche of candidateNiches) {
+      if (niches.length >= 3 || niches.includes(niche) || niches.some(existing => nichesConflict(existing, niche))) continue;
+      niches.push(niche);
+    }
+    evolutionPath = { niches, founderPicks: Number.isInteger(savedPath.founderPicks) ? clamp(savedPath.founderPicks, 0, 3) : Math.min(3, oldPathTraits.length) };
     extras = Object.assign({ g_hp: 0, g_dmg: 0, g_spd: 0 }, data.extras);
     stats = computeStats(owned, extras);
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
     room = data.room;
     dayCycleTime = Number.isFinite(data.dayCycleTime) ? Math.max(0, data.dayCycleTime) % DAY_CYCLE_SECONDS : 0;
     moonCycleTime = Number.isFinite(data.moonCycleTime) ? Math.max(0, data.moonCycleTime) % LUNAR_CYCLE_SECONDS : 0;
+    roomThemeIndex = Number.isInteger(data.roomThemeIndex) ? clamp(data.roomThemeIndex, 0, THEMES.length - 1) : (room - 1 + THEMES.length) % THEMES.length;
     wetLevel = data.wetLevel && data.wetLevel.active ? data.wetLevel : null;
     difficulty = normalizeDifficulty(data.difficulty);
     fruitPending = data.fruitPending === true;
@@ -657,7 +678,13 @@ function loadSavedGame() {
     platforms = data.platforms.map(p => p.x === 0 && p.y === 500 ? Object.assign({}, p, { w: WORLD_W }) : p);
     enemies = data.enemies.map(e => Object.assign({ bossType: e.kind === 'boss' ? bossTypeForRoom(room) : null, chargeT: 0, chargeCd: 3, chargeDir: -1,
       bossMove: 'idle', bossTellT: 0, bossTargetX: 0, bossPattern: 0 }, e));
-    player = Object.assign(newPlayer(), data.player, {
+    const savedPlayer = Object.assign({}, data.player, {
+      curl: Number.isFinite(data.player.curl) ? data.player.curl : Number.isFinite(data.player.bastion) ? data.player.bastion : 0,
+      acd: Object.assign({}, data.player.acd, { curl: data.player.acd && data.player.acd.curl || data.player.acd && data.player.acd.bastion || 0 }),
+    });
+    if (savedPlayer.acd) delete savedPlayer.acd.bastion;
+    delete savedPlayer.bastion;
+    player = Object.assign(newPlayer(), savedPlayer, {
       atkHit: new Set((data.player.atkHit || []).map(i => enemies[i]).filter(Boolean)),
       dashHit: new Set((data.player.dashHit || []).map(i => enemies[i]).filter(Boolean)),
     });
@@ -703,9 +730,10 @@ function makeSecretSite() {
 }
 function startRoom() {
   room++;
+  roomThemeIndex = chooseRoomTheme();
   clearObjects();
   secretSite = makeSecretSite();
-  const waterTraits = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === 'water').length;
+  const waterTraits = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === 'water').length + pathNiches(evolutionPath).filter(niche => niche === 'water').length * 2;
   const wetChance = clamp(0.1 + waterTraits * 0.2, 0.1, 0.85);
   wetLevel = Math.random() < wetChance
     ? { active: true, riverX: rand(7, WORLD_W / 40 - 7), waterfall: Math.random() < 0.55, waterfallX: rand(5, WORLD_W / 40 - 5) }
@@ -807,13 +835,13 @@ function useActive(id, slot) {
   const p = player, s = stats, a = TRAIT_BY_ID[id].active, cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   p.acd[id] = a.cd * s.cdMult;
   const sfx = { torrent: 'water', blizzard: 'frost', snare: 'grow', bloomburst: 'grow', bolt: 'zap' }[id];
-  Snd.play(sfx || (id === 'roar' || id === 'gale' || id === 'bastion' || id === 'quills' || id === 'miasma' || id === 'epidemic' || id === 'breath' ? id : 'dash'));
+  Snd.play(sfx || (id === 'roar' || id === 'gale' || id === 'curl' || id === 'quills' || id === 'miasma' || id === 'epidemic' || id === 'breath' ? id : 'dash'));
   if (id === 'roar') {
     ring(cx, cy, a.color, 260); shake = 10; hitstop = 0.05;
     for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.stunT = e.kind === 'boss' ? 1 : 2.2; e.hp -= 1; e.flash = 0.1; e.vx = Math.sign(e.x - p.x || 1) * 320; e.kb = 0.3; e.vy = -200; }
   } else if (id === 'gale') { p.haste = 3; ring(cx, cy, a.color, 120); burst(cx, cy, a.color, 16); }
   else if (id === 'meteor') { p.meteor = true; p.meteorUp = p.ground ? 0.18 : 0; p.inv = Math.max(p.inv, 0.3); }
-  else if (id === 'bastion') { p.inv = 2.5; p.bastion = 2.5; ring(cx, cy, a.color, 90, 0.6); burst(cx, cy, a.color, 14); }
+  else if (id === 'curl') { p.curl = 2.5; ring(cx, cy, a.color, 90, 0.6); burst(cx, cy, a.color, 14); }
   else if (id === 'quills') {
     for (let i = 0; i < 12; i++) { const ang = i / 12 * Math.PI * 2; pshots.push({ x: cx, y: cy, vx: Math.cos(ang) * 480, vy: Math.sin(ang) * 480, dmg: 1.3, quill: true }); }
     ring(cx, cy, a.color, 70, 0.3);
@@ -860,16 +888,17 @@ function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
   toast(`Tek se je končal na stopnji ${room}. Rekord: ${best.room}. stopnja.`, 3); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
+  evolutionPath = { niches: [], founderPicks: 0 };
   run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0;
   startRoom();
 }
 function hurtPlayer(from, dmg = 1) {
   const p = player;
   if (p.inv > 0) return;
-  if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('bastion'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
+  if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('curl'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
   dmg *= 1 - Math.min(0.25, stats.damageReduction || 0);
   if (p.dashT > 0) dmg *= 0.7;
+  if (p.curl > 0) dmg *= 0.35;
   Snd.play('hurt');
   if (difficulty === 'challenge' && (from.kind || from.enemyShot)) dmg *= 1.2;
   p.hp -= dmg; p.inv = stats.invTime; p.hurtT = 0.2; hitstop = 0.06;
@@ -936,9 +965,10 @@ function updateSecret() {
 function updatePlay(dt) {
   const p = player, s = stats;
   p.inv -= dt; p.hurtT -= dt; p.atkCd -= dt; p.atkT -= dt; p.dashCd -= dt; p.dashT -= dt; p.spitCd -= dt;
-  p.haste -= dt; p.bastion -= dt; p.breathT -= dt;
+  p.haste -= dt; p.curl -= dt; p.breathT -= dt;
   for (const id in p.acd) p.acd[id] -= dt;
   const spd = s.speed * (p.haste > 0 ? 1.5 : 1);
+  p.gliding = false;
   if (p.haste > 0 && Math.random() < dt * 30) burst(p.x + 14, p.y + 30, '#7fd8ff', 1);
   if (s.regen) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
   const dir = (down('KeyD', 'ArrowRight') ? 1 : 0) - (down('KeyA', 'ArrowLeft') ? 1 : 0);
@@ -954,7 +984,7 @@ function updatePlay(dt) {
   if (p.meteor) { p.vx *= 0.9; p.vy = p.meteorUp > 0 ? -460 : 1300; p.meteorUp -= dt; if (Math.random() < 0.7) burst(p.x + 14, p.y + 10, '#ffb347', 1); }
   else if (p.dashT > 0) { p.vx = p.face * 620; p.vy = 0; }
   else {
-    const target = dir * spd, accel = p.ground ? 2600 : 1800;
+    const target = dir * spd * (p.curl > 0 ? 0.35 : 1), accel = p.ground ? 2600 : 1800;
     p.vx += Math.max(-accel * dt, Math.min(accel * dt, target - p.vx));
     const gliding = s.glide && !p.ground && p.vy > 0 && down('Space', 'KeyW', 'ArrowUp');
     p.vy = Math.min(p.vy + (gliding ? 250 : G) * dt, gliding ? s.glideFall : 900);
@@ -966,7 +996,7 @@ function updatePlay(dt) {
   if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; Snd.play('jump'); }
   else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; Snd.play('air'); burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
   if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0 && !p.meteor) p.vy += 3000 * dt;
-  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight', 'MouseRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.55); p.dashHit = new Set(); }
+  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight', 'MouseRight') && p.dashCd <= 0) { p.dashT = s.dashDuration; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.55); p.dashHit = new Set(); }
   if (hit('KeyJ', 'MouseLeft') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; Snd.play('atk'); p.atkHit = new Set(); }
   if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; Snd.play('spit'); pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
   const vy0 = p.vy, wasG = p.ground;
@@ -1109,7 +1139,7 @@ function updatePlay(dt) {
     moveBody(e, dt);
     if (wantVx && e.vx === 0 && e.ground && e.kind !== 'boss' && e.kb <= 0 && e.stunT <= 0) e.vy = -470;
     if (e.y > H + 50) { e.x = clamp(player.x + 450, 100, WORLD_W - 100); e.y = 0; e.vy = 0; }
-    let dmg = (p.atkT > 0 && overlap(box, e) && !p.atkHit.has(e)) ? s.dmg + (p.dashT > 0 ? s.dashDmg : 0) : 0;
+    let dmg = (p.atkT > 0 && overlap(box, e) && !p.atkHit.has(e)) ? s.dmg + (p.dashT > 0 ? s.dashDmg : 0) + (p.gliding ? s.glideDmg : 0) : 0;
     const rammed = p.dashT > 0 && s.ram && overlap(p, e) && !p.dashHit.has(e);
     if (dmg || rammed) {
       let d = dmg || s.dmg + 1;
@@ -1175,7 +1205,7 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
-  evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
+  evolutionPath = { niches: [], founderPicks: 0 };
   run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; moonCycleTime = DAY_CYCLE_SECONDS * 4;
   choice = null; fruitPending = false; fruitTree = null; wetLevel = null; secretSite = null; secretRewardPending = false;
 }
@@ -1302,7 +1332,7 @@ function disposeEvolutionTree() {
   evolutionLabels = [];
 }
 function buildEvolutionTree() {
-  const key = `${[...owned].sort().join(',')}|${evolutionPath.primary}|${evolutionPath.secondary}|${evolutionPath.founderPicks}`;
+  const key = `${[...owned].sort().join(',')}|${pathNiches(evolutionPath).join(',')}|${evolutionPath.founderPicks}`;
   if (key === evolutionBuildKey) return;
   evolutionBuildKey = key;
   disposeEvolutionTree();
@@ -1385,7 +1415,7 @@ function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.34)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('3D RAZVOJNO DREVO', W / 2, 39);
   ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Povleci za obračanje · kolešček za povečavo · niše so razporejene v različnih prostorskih smereh.', W / 2, 62);
+  ui.fillText('Povleci za obračanje · kolešček za povečavo · izbrane niše so razporejene v različnih prostorskih smereh.', W / 2, 62);
   treeNodeBoxes = [];
   for (const { trait, node } of evolutionNodes) {
     const p = projectEvolutionPosition(node.position);
@@ -1398,12 +1428,15 @@ function drawTree() {
     ui.fillStyle = NICHES[label.niche].color; ui.font = 'bold 11px monospace';
     ui.fillText(NICHES[label.niche].name.toUpperCase(), clamp(p.x, 48, W - 48), clamp(p.y, 158, 465));
   }
-  ui.fillStyle = 'rgba(9,12,24,.82)'; ui.fillRect(340, 82, 280, 46);
-  ui.strokeStyle = evolutionPath.primary ? NICHES[evolutionPath.primary].color : '#ffd54f'; ui.lineWidth = 1.5; ui.strokeRect(340, 82, 280, 46);
+  ui.fillStyle = 'rgba(9,12,24,.82)'; ui.fillRect(240, 82, 480, 46);
+  const selectedNiches = pathNiches(evolutionPath);
+  ui.strokeStyle = selectedNiches.length ? NICHES[selectedNiches[0]].color : '#ffd54f'; ui.lineWidth = 1.5; ui.strokeRect(240, 82, 480, 46);
   ui.fillStyle = '#f2f4ff'; ui.font = 'bold 13px monospace';
-  ui.fillText(evolutionPath.primary ? `OSNOVNA NIŠA: ${NICHES[evolutionPath.primary].name}` : 'IZBERI PRVO PRILAGODITEV', W / 2, 101);
+  ui.fillText(selectedNiches.length ? `IZBRANE NIŠE: ${selectedNiches.map(niche => NICHES[niche].name).join(' · ')}` : 'IZBERI PRVO PRILAGODITEV', W / 2, 101);
   ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
-  const focus = evolutionPath.secondary ? `Druga smer: ${NICHES[evolutionPath.secondary].name}` : `Ustanovitvene izbire: ${evolutionPath.founderPicks}/3`;
+  const focus = evolutionPath.founderPicks < 3
+    ? `Ustanovitvene izbire: ${evolutionPath.founderPicks}/3 · do tri združljive niše`
+    : 'Ustanovitvene izbire zaključene · druge niše so zaklenjene';
   ui.fillText(focus, W / 2, 118);
   ui.fillStyle = '#e8d99a'; ui.font = '11px monospace';
   ui.fillText(`Tvoja oblika: ${creatureIdentity(owned, evolutionPath)}`, W / 2, 143);
@@ -1480,7 +1513,7 @@ function pauseAction(index) {
 function endRoom(boss) {
   mode = 'choose';
   if (player.hp <= stats.maxHp / 5 && !fruitTree && !fruitPending) fruitPending = true;
-  player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.bastion = 0; player.meteor = false; player.breathT = 0;
+  player.vx = 0; player.atkT = 0; player.dashT = 0; player.hurtT = 0; player.haste = 0; player.curl = 0; player.meteor = false; player.breathT = 0;
   clearObjects();
   Snd.play('clear'); Snd.music(boss ? 'boss' : 'game', room);
   if (saveBest(room) && room > 1) toast('Nov rekord: ' + room + '. stopnja!', 2.5);
@@ -1502,13 +1535,11 @@ function nextChoice() {
 function pick(opt) {
   const previousSynergies = new Set(stats.synergies.map(y => y.id));
   if (opt.id.startsWith('g_')) extras[opt.id]++; else owned.add(opt.id);
-  if (opt.secret && evolutionPath.primary && !evolutionPath.secondary && opt.niche !== evolutionPath.primary) {
-    evolutionPath.secondary = opt.niche;
-  }
   if (!opt.id.startsWith('g_') && !opt.boss && !opt.secret && !opt.syn) {
-    if (!evolutionPath.primary) evolutionPath.primary = opt.niche;
-    else if (!evolutionPath.secondary && opt.niche !== evolutionPath.primary) evolutionPath.secondary = opt.niche;
+    if (!pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(opt.niche);
     evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
+  } else if (opt.secret && !pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) {
+    evolutionPath.niches.push(opt.niche);
   }
   const old = stats.maxHp;
   stats = computeStats(owned, extras);
@@ -1565,7 +1596,7 @@ uic.addEventListener('pointermove', e => {
   if (treeDrag && treeDrag.pointerId === e.pointerId) {
     if (Math.hypot(e.clientX - treeDrag.startX, e.clientY - treeDrag.startY) > 4) treeDrag.moved = true;
     if (treeDrag.moved) {
-      treeView.yaw = treeDrag.yaw + (e.clientX - treeDrag.startX) * 5 / r.width;
+      treeView.yaw = treeDrag.yaw - (e.clientX - treeDrag.startX) * 5 / r.width;
       treeView.pitch = clamp(treeDrag.pitch + (e.clientY - treeDrag.startY) * 4 / r.height, -1.25, 1.25);
     }
   }
@@ -1659,8 +1690,10 @@ function animatePlayer(dt, t) {
   const speed = Math.abs(p.vx), mv = p.ground && speed > 30 ? 1 : 0;
   p.phase += dt * (6 + speed / 28) * (mv ? 1 : 0);
   const sw = Math.sin(p.phase);
-  if (p.ground || showcase()) { rig.legs[0].rotation.z = sw * 0.8 * mv; rig.legs[1].rotation.z = -sw * 0.8 * mv; }
-  else { rig.legs[0].rotation.z = 0.7; rig.legs[1].rotation.z = -0.4; }
+  rig.legs.forEach((leg, i) => {
+    const stride = i % 2 ? -1 : 1;
+    leg.rotation.z = p.ground || showcase() ? stride * sw * (i < 2 ? 0.65 : 0.5) * mv : stride * (i < 2 ? 0.4 : 0.25);
+  });
   const atk = p.atkT > 0 ? 1 - p.atkT / 0.12 : -1;
   rig.arms.forEach((a, i) => {
     if (atk >= 0) a.rotation.z = -0.8 + 3.0 * Math.min(1, atk * (i ? 1.0 : 1.25));
@@ -1676,8 +1709,9 @@ function animatePlayer(dt, t) {
   rig.torso.rotation.z = -Math.min(1, speed / stats.speed) * 0.12 - (p.dashT > 0 ? 0.35 : 0);
   rig.torso.scale.y = 1 + 0.02 * Math.sin(t * 3);
   const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
-  rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : 1), bs * (1 + st), bs * (1 - st * 0.5));
-  setGlow(rig, p.bastion > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', mode !== 'play' ? 0 : p.hurtT > 0 ? 0.9 : p.bastion > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
+  rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : p.curl > 0 ? 1.1 : 1),
+    bs * (1 + st) * (p.curl > 0 ? 0.62 : 1), bs * (1 - st * 0.5));
+  setGlow(rig, p.curl > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', mode !== 'play' ? 0 : p.hurtT > 0 ? 0.9 : p.curl > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
   if (rig.flame) { rig.flame.forEach((f, i) => { f.scale.y = f.userData.h * (0.8 + 0.35 * Math.sin(t * 14 + i * 2)); }); }
   if (rig.mouthGlow) rig.mouthGlow.material.emissiveIntensity = p.breathT > 0 ? 2.5 : 0.6 + 0.3 * Math.sin(t * 4);
   if (atk >= 0 || p.atkT > -0.05) {
@@ -1826,9 +1860,10 @@ function drawChoose() {
       : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`;
   ui.fillText(title, W / 2, 44);
   ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
-  const foundationHint = !evolutionPath.primary ? 'Prva izbira določi tvojo osnovno nišo in telesno smer.'
-    : evolutionPath.founderPicks < 3 ? `Začetna usmeritev ${evolutionPath.founderPicks}/3: izberi glavno ali združljivo drugo nišo.`
-      : `Specializacija: ${NICHES[evolutionPath.primary].name}${evolutionPath.secondary ? ' + ' + NICHES[evolutionPath.secondary].name : ''}; druge niše so zaklenjene.`;
+  const selectedNiches = pathNiches(evolutionPath);
+  const foundationHint = !selectedNiches.length ? 'Prva izbira določi osnovno nišo in telesno smer.'
+    : evolutionPath.founderPicks < 3 ? `Začetne izbire ${evolutionPath.founderPicks}/3: usmeri se v do tri združljive niše.`
+      : `Specializacija: ${selectedNiches.map(niche => NICHES[niche].name).join(' + ')}; druge niše so zaklenjene.`;
   ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.'
     : secret ? 'Starodavne prilagoditve so edinstvene in na voljo samo v skritih brlogih.'
       : `${foundationHint} · obračanje: povleci · izbira: miška ali 1–3.`, W / 2, 68);
@@ -1862,7 +1897,7 @@ function drawChoose() {
     `Zračni skoki: ${stats.airJumps} · bodice: ${stats.thorns}`,
     `Sunek: ${stats.dash ? 'da' : 'ne'} · bonus: ${stats.dashDmg.toFixed(1)}`,
     `Strup: ${stats.poison.toFixed(1)} · ogenj: ${stats.burn.toFixed(1)}`,
-    `Zmanjšanje škode: ${Math.round(stats.damageReduction * 100)} % · med sunkom: 30 %`,
+    `Zmanjšanje škode: ${Math.round(stats.damageReduction * 100)} % · sunek: 30 %${stats.curl ? ' · klubko: 65 %' : ''}`,
   ];
   statLines.forEach((line, index) => ui.fillText(line, 708, 126 + index * 14));
   choice.options.forEach((t, i) => {
