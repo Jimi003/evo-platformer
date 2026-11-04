@@ -112,21 +112,26 @@ function buildCreature(owned) {
   const legGrowth = Math.min(1, (invest.swift * 0.6 + invest.predator * 0.4) / 8);
   const venomGrowth = Math.min(1, invest.venom / 8), airGrowth = Math.min(1, invest.air / 8);
   const headGrowth = Math.min(1, Math.max(0, nTraits - 1) / 7);
-  const tall = has('legs'), quad = has('horns') && !has('claws');
-  const legsOn = tall || has('roots') || has('alpha') || quad;
-  const armsOn = ['claws', 'tentacle', 'vines'].some(has);
-  const tailOn = ['tail', 'fins', 'flyer'].some(has);
+  const manyLegs = has('manylegs');
+  const quad = manyLegs || ['legs', 'roots', 'alpha', 'bulk', 'carapace', 'spikes', 'stonehide', 'ironbloom'].some(has)
+    || has('horns') && !has('claws');
+  const legsOn = quad;
+  const armsOn = ['claws', 'pincers', 'tentacle', 'vines'].some(has);
+  const tailOn = ['tail', 'fins', 'flyer', 'stinger'].some(has) || has('feathers') && airGrowth >= 0.25;
   const defenseGrowth = Math.min(1, invest.bulwark / 8);
   const bulk = 1 + defenseGrowth * 0.08 + (has('bulk') ? 0.06 : 0);
   const thick = 1 + defenseGrowth * 0.06, fatK = 1 + defenseGrowth * 0.1 + (has('fat') ? 0.08 : 0);
-  const L = legsOn ? (tall ? 0.16 + legGrowth * 0.32 : 0.1 + legGrowth * 0.17) + (has('sprint') ? 0.04 : 0) : 0;
-  const tr = [0.37 - headGrowth * 0.1, 0.34 - headGrowth * 0.03, 0.34 - headGrowth * 0.1];
-  const ty = L + 0.34 - headGrowth * 0.025;
+  const L = legsOn ? 0.15 + legGrowth * 0.28 + (has('sprint') ? 0.04 : 0) : 0;
+  const tr = [0.43 - headGrowth * 0.07, 0.29 - headGrowth * 0.02, 0.29 - headGrowth * 0.07];
+  const ty = L + 0.31 - headGrowth * 0.025;
   model.scale.setScalar(0.95 * bulk);
 
   // noge (skupine obstajajo vedno zaradi animacije, mreže le če imaš noge)
   rig.legs = [];
-  const legPoints = quad ? [[-0.18, -1], [-0.18, 1], [0.17, -1], [0.17, 1]] : [[-0.02, -1], [-0.02, 1]];
+  const legPoints = legsOn
+    ? manyLegs ? [[-0.24, -1], [-0.24, 1], [0, -1], [0, 1], [0.24, -1], [0.24, 1]]
+      : [[-0.2, -1], [-0.2, 1], [0.18, -1], [0.18, 1]]
+    : [[-0.02, -1], [-0.02, 1]];
   for (const [x, side] of legPoints) {
     const hip = new THREE.Group();
     hip.position.set(x, L, side * 0.13);
@@ -156,10 +161,11 @@ function buildCreature(owned) {
     rig.tail.push(piv);
     tp = piv; tpos = [-segLen, 0, 0];
   }
-  if (has('fangs')) spike(tp, accM, [-segLen, 0, 0], 0.035, 0.17, [0, 0, Math.PI / 2]);
+  if (has('stinger')) spike(tp, glowMat('#b455d6', 0.75), [-segLen, 0, 0], 0.045, 0.24, [0, 0, Math.PI / 2]);
+  else if (has('fangs')) spike(tp, accM, [-segLen, 0, 0], 0.035, 0.17, [0, 0, Math.PI / 2]);
   else if (has('barbed')) mk(tp, GEO.sph, boneM, [-segLen, 0, 0], [0.07, 0.07, 0.07]);
-  if (tailOn && has('flyer') && airGrowth >= 0.35) {
-    const n = 3 + Math.floor(airGrowth * 5);
+  if (tailOn && has('feathers') && airGrowth >= 0.2) {
+    const n = 2 + Math.floor(airGrowth * 8);
     for (let i = 0; i < n; i++) spike(tp, featherM, [-segLen * 0.9, (i - (n - 1) / 2) * 0.035, 0], 0.025, 0.14 + airGrowth * 0.06, [0, 0, Math.PI / 2]);
   }
 
@@ -168,11 +174,15 @@ function buildCreature(owned) {
   model.add(torso);
   rig.torso = torso;
   mk(torso, GEO.creatureBody, bodyM, [0, ty, 0], [tr[0] * thick, tr[1] * thick, tr[2] * thick], [0, 0, -headGrowth * 0.15]);
-  mk(torso, GEO.creatureBody, bellyM, [0.1, ty - 0.05, 0], [0.17 * fatK, 0.19 * fatK, 0.17 * fatK], [0, 0, -0.15]);
+  mk(torso, GEO.creatureBody, bellyM, [0.12, ty - 0.04, 0], [0.19 * fatK, 0.14 * fatK, 0.16 * fatK], [0, 0, -0.1]);
   if (!legsOn) mk(torso, GEO.creatureBody, bodyM, [0, ty - 0.26, 0], [0.31, 0.07, 0.29]);
   mk(torso, GEO.sph, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.45 }), [-0.08, ty + tr[1] * 0.72, 0.12], [0.07, 0.04, 0.05], [0, 0, 0.3]).castShadow = false;
   if (has('camo')) for (const side of [-1, 1]) for (let i = 0; i < 3; i++) mk(torso, GEO.sph, darkM, [-0.12 + i * 0.1, ty + 0.05 - i * 0.02, side * 0.2], [0.03, 0.16, 0.05], [0, 0, -0.2]);
   if (has('bulk')) for (const side of [-1, 1]) mk(torso, GEO.sph, armorM, [0.05, ty + 0.25, side * 0.25], [0.12, 0.09, 0.1]);
+  if (has('hide')) for (const side of [-1, 1]) for (let i = 0; i < 4; i++) {
+    mk(torso, GEO.sph, i % 2 ? darkM : armorM, [-0.24 + i * 0.13, ty + 0.16 - (i % 2) * 0.12, side * (tr[2] * 0.82)],
+      [0.085, 0.065, 0.035], [0, 0, (i % 2 ? 1 : -1) * 0.18]);
+  }
   if (has('cracker')) for (const side of [-1, 1]) {
     mk(torso, GEO.box, armorM, [0.12, ty - 0.02, side * 0.26], [0.14, 0.16, 0.08], [0, 0, 0.25]);
     spike(torso, glowMat('#ffd24a', 1.1), [0.2, ty - 0.02, side * 0.29], 0.025, 0.18, [side * 0.6, 0, -1.1]);
@@ -180,6 +190,10 @@ function buildCreature(owned) {
   // hrbet: bodice, oklep, školjka, kužni mehurji
   if (has('carapace')) for (let i = 0; i < 1 + Math.floor(defenseGrowth * 4); i++) mk(torso, GEO.sph, armorM, [-0.2 - Math.sin(i * 0.5) * 0.04, ty + 0.2 - i * 0.12, 0], [0.08, 0.1, 0.22 - i * 0.015], [0, 0, 0.25]);
   if (has('shell')) mk(torso, GEO.sph, armorM, [-0.16, ty + 0.02, 0], [0.18, 0.36, 0.3], [0, 0, 0.15]);
+  if (has('curl')) {
+    mk(torso, GEO.sph, armorM, [-0.12, ty + 0.05, 0], [0.24, 0.3, 0.32], [0, 0, 0.12]);
+    for (const side of [-1, 1]) mk(torso, GEO.sph, accM, [-0.1, ty + 0.07, side * 0.26], [0.12, 0.15, 0.05]);
+  }
   if (has('spikes')) for (let i = 0; i < (has('barbed') ? 6 : 4); i++) spike(torso, boneM, [-0.18 - i * 0.005, ty + 0.3 - i * 0.1, i % 2 ? 0.08 : -0.08], 0.04, has('barbed') ? 0.22 : 0.13, [0, 0, 1.2]);
   if (has('plague')) for (let i = 0; i < 4; i++) mk(torso, GEO.sph, glowMat('#9be15d', 0.5), [-0.22, ty + 0.15 - i * 0.1, (i % 2 ? 1 : -1) * 0.1], [0.06, 0.06, 0.06]);
   if (has('bossheart')) {
@@ -215,6 +229,9 @@ function buildCreature(owned) {
       if (has('breaker')) mk(piv, GEO.sph, armorM, [0.03, -0.3, 0], [0.11, 0.1, 0.1]);
       if (has('cracker')) {
         for (let i = -1; i <= 1; i++) spike(piv, glowMat('#ffd24a', 1.2), [0.05, -armLen - 0.05, i * 0.04], 0.018, 0.16, [0, 0, -1.5]);
+      }
+      if (has('pincers')) for (const side of [-1, 1]) {
+        spike(piv, boneM, [0.12, -armLen - 0.02, side * 0.045], 0.025, 0.14, [0, side * 0.25, -1.35]);
       }
     }
     piv.userData.side = side;
@@ -278,7 +295,6 @@ function buildCreature(owned) {
   if (has('trample')) for (let i = -1; i <= 1; i++) spike(head, armorM, [0.12, 0.17, i * 0.06], 0.035, 0.1, [0, 0, -0.6]);
   if (has('gale')) for (const side of [-1, 1]) spike(head, accM, [-0.08, 0.08, side * 0.18], 0.03, 0.26, [side * 0.9, 0, 1.9]);
   if (has('meteor')) for (const side of [-1, 1]) { mk(torso, GEO.sph, armorM, [0.05, ty + 0.2, side * 0.3], [0.13, 0.12, 0.12]); mk(torso, GEO.sph, fireM, [0.12, ty + 0.22, side * 0.34], [0.04, 0.04, 0.04]); }
-  if (has('bastion')) for (let i = 0; i < 3; i++) mk(torso, GEO.box, glowMat('#9be15d', 0.45), [0.05, ty + 0.2 - i * 0.14, 0.27 * (i % 2 ? 1 : -1)], [0.16, 0.08, 0.04], [0, 0, 0.3]).castShadow = false;
   if (has('quills')) for (let i = 0; i < 7; i++) spike(torso, boneM, [-0.2, ty + 0.32 - i * 0.07, ((i % 3) - 1) * 0.1], 0.025, 0.3, [0, 0, 1.0 + (i % 3) * 0.12]);
   if (has('colossus')) for (const side of [-1, 1]) mk(torso, GEO.sph, armorM, [0.04, ty + 0.34, side * 0.3], [0.2, 0.13, 0.15]);
   if (has('miasma')) for (let i = 0; i < 6; i++) mk(torso, GEO.sph, glowMat('#c24ff0', 0.5), [-0.15 + (i % 3) * 0.1, ty + 0.1 - Math.floor(i / 3) * 0.2, (i % 2 ? 1 : -1) * 0.25], [0.06, 0.06, 0.06]).castShadow = false;
@@ -329,9 +345,45 @@ function buildCreature(owned) {
   if (has('snare')) for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; spike(model, barkM, [Math.cos(a) * 0.38, 0, Math.sin(a) * 0.3], 0.04, 0.2, [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6]); }
   if (has('spores')) for (let i = 0; i < 5; i++) soft(mk(torso, GEO.sph, glowMat('#c8ff9a', 0.7), [-0.05 + (i % 3) * 0.1, ty + tr[1] + 0.05 + (i % 2) * 0.1, (i - 2) * 0.07], [0.035, 0.035, 0.035]));
   if (has('canopy')) for (let i = 0; i < 3; i++) mk(torso, GEO.sph, leafG, [-0.05 + (i - 1) * 0.12, ty + tr[1] * 0.95 + 0.12 + (i === 1 ? 0.06 : 0), (i - 1) * 0.1], [0.17, 0.09, 0.17]);
+  if (has('mossmantle')) {
+    const mossM = M('#438d4b'), mossLightM = M('#78b85a');
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 7; i++) {
+        const x = -0.27 + (i % 4) * 0.16, y = ty - 0.18 + Math.floor(i / 4) * 0.2;
+        mk(torso, GEO.sph, i % 3 ? mossM : mossLightM, [x, y, side * (tr[2] * 0.87)], [0.09, 0.055, 0.035], [0, 0, (i % 2 ? 1 : -1) * 0.25]);
+      }
+      mk(head, GEO.sph, mossLightM, [-0.08, 0.12, side * 0.12], [0.08, 0.045, 0.035]);
+    }
+    for (let i = 0; i < 3; i++) spike(torso, mossLightM, [-0.15 + i * 0.12, ty + tr[1] * 0.8, 0], 0.025, 0.12, [0, 0, 0.15]);
+  }
+  if (has('giantbloom')) {
+    const stem = mk(torso, GEO.taper, barkM, [-0.2, ty + tr[1] + 0.34, 0], [0.08, 0.72, 0.08], [0, 0, -0.18]);
+    stem.castShadow = false;
+    for (let i = 0; i < 4; i++) {
+      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+      mk(torso, GEO.sph, leafG, [-0.18 - row * 0.08, ty + tr[1] + 0.16 + row * 0.08, side * (0.18 + row * 0.04)],
+        [0.2 + row * 0.03, 0.065, 0.12], [side * 0.42, 0, -0.28]);
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = i * Math.PI * 2 / 7;
+      mk(torso, GEO.sph, petalM, [-0.27 + Math.cos(a) * 0.12, ty + tr[1] + 0.76, Math.sin(a) * 0.12],
+        [0.11, 0.055, 0.07], [0, a, 0]);
+    }
+    mk(torso, GEO.sph, goldM, [-0.27, ty + tr[1] + 0.78, 0], [0.07, 0.07, 0.07]);
+  }
   if (has('treant')) for (let i = 0; i < 5; i++) mk(torso, GEO.sph, barkM, [0.0 + (i % 2) * 0.1, ty + 0.2 - i * 0.1, (i % 2 ? 1 : -1) * (tr[2] * 0.85)], [0.07, 0.07, 0.05]);
   if (has('bloomburst')) { for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; soft(mk(torso, GEO.sph, petalM, [-tr[0] * 0.9, ty + 0.05 + Math.cos(a) * 0.12, Math.sin(a) * 0.12], [0.04, 0.07, 0.07])); } soft(mk(torso, GEO.sph, goldM, [-tr[0] * 0.95, ty + 0.05, 0], [0.04, 0.05, 0.05])); }
-  if (has('feathers')) for (let i = 0; i < 2 + Math.floor(airGrowth * 5); i++) spike(torso, featherM, [-tr[0] * 0.85, ty + 0.2 - i * 0.075, (i - 1) * 0.045], 0.035, 0.12 + airGrowth * 0.12, [0, 0, 1.9]);
+  if (has('feathers')) {
+    const count = 4 + Math.floor(airGrowth * 10);
+    for (const side of [-1, 1]) for (let i = 0; i < count; i++) {
+      const row = i / Math.max(1, count - 1);
+      spike(torso, i % 3 ? featherM : featherShadeM,
+        [-tr[0] * 0.66 + row * tr[0] * 0.45, ty + tr[1] * 0.62 - row * tr[1] * 1.25, side * (tr[2] * 0.78)],
+        0.023 + airGrowth * 0.012, 0.1 + airGrowth * 0.17, [side * 0.5, 0, 1.8]);
+    }
+    const crest = 2 + Math.floor(airGrowth * 5);
+    for (let i = 0; i < crest; i++) spike(head, i % 2 ? featherM : featherShadeM, [-0.1 - i * 0.04, 0.13, 0], 0.025, 0.12 + airGrowth * 0.08, [0, 0, 0.25]);
+  }
   rig.sparks = [];
   if (has('static')) for (let i = 0; i < 4; i++) { const m = soft(mk(torso, GEO.sph, sparkM, [0.02 - i * 0.06, ty + 0.15 - (i % 2) * 0.18, (i % 2 ? 1 : -1) * (tr[2] * 0.95)], [0.03, 0.03, 0.03])); rig.sparks.push(m); }
   if (has('conduct')) { mk(head, GEO.cyl, M('#cfd6ff'), [0, 0.28, 0], [0.012, 0.2, 0.012]); rig.sparks.push(soft(mk(head, GEO.sph, sparkM, [0, 0.48, 0], [0.05, 0.05, 0.05]))); }
@@ -354,12 +406,14 @@ function buildCreature(owned) {
       piv.position.set(-0.12, ty + 0.2, side * 0.12);
       piv.rotation.z = 0.35;
       torso.add(piv);
-      const w = wingShape(size, wm, darkM);
-      if (has('wings') && has('feathers')) {
-        for (let i = 0; i < 3 + Math.floor(airGrowth * 5); i++) {
-          spike(w, i % 2 ? featherM : featherShadeM, [0.28 + i * 0.08, 0.14 - i * 0.015, 0.02], 0.025, 0.12 + airGrowth * 0.07, [0, 0, 1.75]);
-        }
+      const featheredWings = has('feathers');
+      const w = featheredWings ? new THREE.Group() : wingShape(size, wm, darkM);
+      if (featheredWings) for (let i = 0; i < 5 + Math.floor(airGrowth * 8); i++) {
+        const row = i / Math.max(1, 4 + Math.floor(airGrowth * 8));
+        spike(w, i % 2 ? featherM : featherShadeM, [0.04 + row * 0.48, 0.02 + row * 0.24, 0],
+          0.026 + airGrowth * 0.012, (0.16 + airGrowth * 0.22) * size, [0, 0, 1.5 + row * 0.35]);
       }
+      w.scale.setScalar(size);
       w.rotation.y = side * -(Math.PI / 2 + 0.9);
       piv.add(w);
       piv.userData.side = side;
