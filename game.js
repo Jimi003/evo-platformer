@@ -22,6 +22,17 @@ ui.setTransform(RW / W, 0, 0, RH / H, 0, 0);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, RW / RH, 0.1, 160);
+const evolutionScene = new THREE.Scene();
+evolutionScene.background = new THREE.Color('#070b18');
+const evolutionCamera = new THREE.PerspectiveCamera(50, RW / RH, 0.1, 200);
+evolutionCamera.position.set(0, 0, 30);
+evolutionScene.add(new THREE.AmbientLight('#bac8ff', 1.4));
+const evolutionLight = new THREE.PointLight('#ffd77a', 1.8, 60);
+evolutionLight.position.set(4, 8, 12);
+evolutionScene.add(evolutionLight);
+const evolutionRoot = new THREE.Group();
+evolutionScene.add(evolutionRoot);
+let evolutionNodes = [], evolutionLabels = [], evolutionBuildKey = '';
 const hemi = new THREE.HemisphereLight('#c8d4ff', '#4a3a5a', 0.6);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff0d8', 0.8);
@@ -537,6 +548,7 @@ const down = (...c) => c.some(k => keys[k]), hit = (...c) => c.some(k => pressed
 
 // ---------- Stanje igre ----------
 let owned = new Set(), extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }, stats = computeStats(owned, extras);
+let evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
 let run = { revived: false, bosses: 0 }, points = 0;
 let difficulty = 'hard';
 function normalizeDifficulty(value) { return value === 'easy' || value === 'challenge' ? value : 'hard'; }
@@ -569,7 +581,7 @@ function saveBest(done) {
 }
 let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [], choiceCool = 0, mouse = { x: -1, y: -1 };
 let synergyCards = [], pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
-const treeView = { x: 0, y: 0, zoom: 0.85 };
+const treeView = { yaw: -0.24, pitch: 0.22, distance: 30 };
 let treeDrag = null, suppressTreeClick = false;
 const SAVE_KEY = 'evo-save-v1';
 
@@ -588,7 +600,7 @@ function saveGame() {
   const savedPlayer = { ...player, atkHit: [...player.atkHit].map(e => enemies.indexOf(e)).filter(i => i >= 0),
     dashHit: [...player.dashHit].map(e => enemies.indexOf(e)).filter(i => i >= 0) };
   const data = {
-    room, difficulty, owned: [...owned], extras, run, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel,
+    room, difficulty, owned: [...owned], extras, run, evolutionPath, fruitPending, fruitTree, dayCycleTime, moonCycleTime, wetLevel,
     secretSite, secretRewardPending,
     player: savedPlayer,
     platforms,
@@ -613,6 +625,21 @@ function loadSavedGame() {
     }
     clearObjects();
     owned = new Set(data.owned);
+    const oldPathTraits = [...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && !t.boss && !t.secret && !t.syn);
+    const inferredPrimary = oldPathTraits[0] && oldPathTraits[0].niche;
+    const savedPath = data.evolutionPath || {};
+    const validLineage = niche => NICHES[niche] && niche !== 'boss' && niche !== 'syn';
+    const primary = validLineage(savedPath.primary) ? savedPath.primary : inferredPrimary || null;
+    evolutionPath = {
+      primary,
+      secondary: validLineage(savedPath.secondary) && savedPath.secondary !== primary
+        && (!primary || !nichesConflict(primary, savedPath.secondary)) ? savedPath.secondary : null,
+      founderPicks: Number.isInteger(savedPath.founderPicks) ? clamp(savedPath.founderPicks, 0, 3) : Math.min(3, oldPathTraits.length),
+    };
+    if (!evolutionPath.secondary && evolutionPath.primary) {
+      const second = oldPathTraits.find(t => t.niche !== evolutionPath.primary && !nichesConflict(evolutionPath.primary, t.niche));
+      if (second) evolutionPath.secondary = second.niche;
+    }
     extras = Object.assign({ g_hp: 0, g_dmg: 0, g_spd: 0 }, data.extras);
     stats = computeStats(owned, extras);
     run = Object.assign({ revived: false, bosses: 0 }, data.run);
@@ -671,7 +698,7 @@ function removeObj(b) { if (b.obj) { scene.remove(b.obj); disposeObj(b.obj); b.o
 
 function makeSecretSite() {
   const gates = Object.keys(SECRET_GATES).filter(niche => [...owned].some(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].niche === niche));
-  if (!gates.length || !secretOffers(owned).length || Math.random() > 0.3) return null;
+  if (!gates.length || !secretOffers(owned, evolutionPath).length || Math.random() > 0.3) return null;
   return { x: rand(260, WORLD_W - 260), gate: gates[Math.floor(Math.random() * gates.length)], found: false };
 }
 function startRoom() {
@@ -794,8 +821,8 @@ function useActive(id, slot) {
     ring(cx, cy, a.color, 260, 0.6); shake = 5; burst(cx, cy, '#c24ff0', 30);
     for (const e of enemies) if (Math.hypot(e.x + e.w / 2 - cx, e.y + e.h / 2 - cy) < 260) { e.poisT = Math.max(e.poisT, 3); e.poisDps = Math.max(e.poisDps, (s.poison || 1) * 1.25); e.hp -= 0.5; e.flash = 0.1; }
   } else if (id === 'epidemic') {
-    ring(cx, cy, a.color, 520, 0.8); shake = 6;
-    for (const e of enemies) { e.poisT = 4; e.poisDps = Math.max(s.poison, 1); e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 6); }
+    ring(cx, cy, a.color, 420, 0.65); shake = 4;
+    for (const e of enemies) { e.poisT = Math.max(e.poisT, 3); e.poisDps = Math.max(e.poisDps, s.poison * 0.6); e.flash = 0.1; burst(e.x + e.w / 2, e.y, '#9be15d', 4); }
   } else if (id === 'torrent') {
     shake = 4; ring(cx + p.face * 60, cy, a.color, 120, 0.4);
     for (let i = 0; i < 14; i++) burst(cx + p.face * (20 + i * 22), cy + rand(-20, 24), i % 2 ? '#3b9bff' : '#bfeaff', 2);
@@ -833,6 +860,7 @@ function toast(t, sec = 2) { toastText = t; toastT = sec; }
 function die() {
   toast(`Tek se je končal na stopnji ${room}. Rekord: ${best.room}. stopnja.`, 3); Snd.play('die');
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
+  evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
   run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0;
   startRoom();
 }
@@ -840,6 +868,8 @@ function hurtPlayer(from, dmg = 1) {
   const p = player;
   if (p.inv > 0) return;
   if (p.shield) { p.shield = false; p.inv = 0.6; Snd.play('bastion'); burst(p.x + 14, p.y + 18, '#9be15d', 12); return; }
+  dmg *= 1 - Math.min(0.25, stats.damageReduction || 0);
+  if (p.dashT > 0) dmg *= 0.7;
   Snd.play('hurt');
   if (difficulty === 'challenge' && (from.kind || from.enemyShot)) dmg *= 1.2;
   p.hp -= dmg; p.inv = stats.invTime; p.hurtT = 0.2; hitstop = 0.06;
@@ -1145,6 +1175,7 @@ function updatePlay(dt) {
 // ---------- Izbira evolucije ----------
 function resetRun() {
   owned = new Set(); extras = { g_hp: 0, g_dmg: 0, g_spd: 0 }; stats = computeStats(owned, extras);
+  evolutionPath = { primary: null, secondary: null, founderPicks: 0 };
   run.revived = false; run.bosses = 0; room = 0; player = null; dayCycleTime = 0; moonCycleTime = DAY_CYCLE_SECONDS * 4;
   choice = null; fruitPending = false; fruitTree = null; wetLevel = null; secretSite = null; secretRewardPending = false;
 }
@@ -1244,114 +1275,147 @@ function drawPauseSynergies() {
     ui.textAlign = 'center';
   }
 }
-function drawTree() {
-  ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
-  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
-  ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Povleci za premik · kolešček za povečavo · barva označuje nišo · oblika razvojno smer.', W / 2, 62);
-  treeNodeBoxes = [];
-  const center = { x: W / 2, y: 270 };
-  const treeTraits = TRAITS.filter(trait => !trait.secret || owned.has(trait.id));
-  ui.save();
-  ui.beginPath(); ui.rect(12, 72, W - 24, 408); ui.clip();
-  ui.translate(treeView.x, treeView.y);
-  ui.translate(center.x, center.y); ui.scale(treeView.zoom, treeView.zoom); ui.translate(-center.x, -center.y);
-  const sector = { body: -Math.PI / 2, movement: 0, offense: Math.PI / 2, survival: Math.PI };
-  const positions = new Map();
+const EVOLUTION_DIRECTIONS = {
+  predator: [1, 0.1, 0.5], swift: [0.5, 0.8, -0.6], bulwark: [0, 0.4, 1], venom: [-0.6, 0.8, -0.5],
+  fire: [-1, 0.1, 0.4], water: [-0.7, -0.7, -0.6], land: [0, -1, 0.5], air: [0.8, -0.7, -0.5], boss: [0, -0.3, 1],
+};
+function evolutionPosition(trait, index, count) {
+  const direction = new THREE.Vector3(...(EVOLUTION_DIRECTIONS[trait.niche] || [0, 0, 1])).normalize();
+  const side = new THREE.Vector3(-direction.z, 0, direction.x);
+  if (side.lengthSq() < 0.01) side.set(1, 0, 0);
+  side.normalize();
+  const up = direction.clone().cross(side).normalize();
+  const tier = traitTier(trait);
+  const offset = (index - (count - 1) / 2) * 0.92;
+  return direction.multiplyScalar(2.2 + tier * 2.15).addScaledVector(side, offset).addScaledVector(up, ((index % 2) ? 0.3 : -0.3));
+}
+function disposeEvolutionTree() {
+  evolutionRoot.traverse(object => {
+    if (object.geometry) object.geometry.dispose();
+    if (object.material) {
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach(material => material.dispose());
+    }
+  });
+  evolutionRoot.clear();
+  evolutionNodes = [];
+  evolutionLabels = [];
+}
+function buildEvolutionTree() {
+  const key = `${[...owned].sort().join(',')}|${evolutionPath.primary}|${evolutionPath.secondary}|${evolutionPath.founderPicks}`;
+  if (key === evolutionBuildKey) return;
+  evolutionBuildKey = key;
+  disposeEvolutionTree();
+  const center = new THREE.Mesh(new THREE.IcosahedronGeometry(0.68, 1), new THREE.MeshStandardMaterial({
+    color: '#ffd54f', emissive: '#6f4a08', emissiveIntensity: 0.8, roughness: 0.32, metalness: 0.25,
+  }));
+  evolutionRoot.add(center);
+  const traits = TRAITS.filter(trait => !trait.secret || owned.has(trait.id));
   const tiers = new Map();
-  for (const trait of treeTraits) {
-    const key = `${trait.dimension}:${traitTier(trait)}`;
+  for (const trait of traits) {
+    const key = `${trait.niche}:${traitTier(trait)}`;
     if (!tiers.has(key)) tiers.set(key, []);
     tiers.get(key).push(trait);
   }
-  for (const [key, traits] of tiers) {
-    const [dimension, tierText] = key.split(':'), angle = sector[dimension], tier = Number(tierText);
-    traits.forEach((trait, index) => {
-      const lane = Math.floor(index / 4), count = Math.min(4, traits.length - lane * 4), slot = index % 4;
-      const radius = 64 + (tier - 1) * 60 + lane * 34;
-      const nodeAngle = angle + (slot - (count - 1) / 2) * 0.5;
-      positions.set(trait.id, { trait, x: Math.cos(nodeAngle) * radius, y: Math.sin(nodeAngle) * radius });
-    });
+  const positions = new Map();
+  for (const siblings of tiers.values()) {
+    siblings.forEach((trait, index) => positions.set(trait.id, evolutionPosition(trait, index, siblings.length)));
   }
-  for (const p of positions.values()) { p.x = center.x + p.x; p.y = center.y + p.y; }
-  for (const trait of treeTraits) {
-    const to = positions.get(trait.id);
-    if (!to) continue;
+  for (const niche of Object.keys(EVOLUTION_DIRECTIONS)) {
+    if (!NICHES[niche]) continue;
+    const direction = new THREE.Vector3(...EVOLUTION_DIRECTIONS[niche]).normalize();
+    const endpoint = direction.clone().multiplyScalar(15);
+    const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), endpoint]);
+    const material = new THREE.LineBasicMaterial({ color: NICHES[niche].color, transparent: true, opacity: 0.32 });
+    evolutionRoot.add(new THREE.Line(geometry, material));
+    evolutionLabels.push({ niche, position: direction.multiplyScalar(16) });
+  }
+  for (const trait of traits) {
+    const position = positions.get(trait.id);
+    if (!position) continue;
     const requirements = traitRequires(trait);
-    if (!requirements.length) {
-      ui.beginPath(); ui.moveTo(center.x, center.y); ui.lineTo(to.x, to.y);
-      ui.strokeStyle = owned.has(trait.id) ? '#9be15d' : NICHES[trait.niche].color + '88'; ui.lineWidth = 1.5; ui.stroke();
-    }
-    for (const requiredId of requirements) {
-      const from = positions.get(requiredId);
+    const parents = requirements.length ? requirements : [null];
+    for (const parentId of parents) {
+      const from = parentId ? positions.get(parentId) : new THREE.Vector3();
       if (!from) continue;
-      ui.beginPath();
-      ui.moveTo(from.x, from.y);
-      ui.lineTo(to.x, to.y);
-      ui.strokeStyle = owned.has(requiredId) && owned.has(trait.id) ? '#9be15d' : owned.has(requiredId) ? NICHES[trait.niche].color + '99' : 'rgba(178,190,216,.2)';
-      ui.lineWidth = owned.has(requiredId) && owned.has(trait.id) ? 2 : 1;
-      ui.stroke();
+      const active = owned.has(trait.id) && (!parentId || owned.has(parentId));
+      const availableParent = !parentId || owned.has(parentId);
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints([from, position]);
+      const lineMaterial = new THREE.LineBasicMaterial({
+        color: active ? '#9be15d' : availableParent ? NICHES[trait.niche].color : '#596277',
+        transparent: true, opacity: active ? 0.92 : availableParent ? 0.58 : 0.2,
+      });
+      evolutionRoot.add(new THREE.Line(lineGeometry, lineMaterial));
     }
+    const state = traitState(trait, owned);
+    const pathOpen = traitAllowedByPath(trait, evolutionPath);
+    const color = state === 'owned' ? '#9be15d' : !pathOpen || state === 'blocked' ? '#4b3442' : state === 'open' ? NICHES[trait.niche].color : '#364052';
+    const geometry = trait.boss ? new THREE.DodecahedronGeometry(0.48, 0)
+      : !requirements.length ? new THREE.IcosahedronGeometry(0.46, 0)
+        : trait.dimension === 'movement' ? new THREE.OctahedronGeometry(0.4)
+          : trait.dimension === 'offense' ? new THREE.TetrahedronGeometry(0.44)
+            : trait.dimension === 'survival' ? new THREE.BoxGeometry(0.55, 0.55, 0.55)
+              : new THREE.SphereGeometry(0.4, 12, 10);
+    const material = new THREE.MeshStandardMaterial({
+      color, emissive: color, emissiveIntensity: state === 'owned' || state === 'open' ? 0.28 : 0.04,
+      roughness: 0.4, metalness: trait.boss ? 0.45 : 0.12, transparent: state === 'locked' || !pathOpen, opacity: state === 'locked' || !pathOpen ? 0.42 : 1,
+    });
+    const node = new THREE.Mesh(geometry, material);
+    node.position.copy(position);
+    node.userData.trait = trait;
+    node.scale.setScalar(state === 'owned' ? 1.14 : 1);
+    evolutionRoot.add(node);
+    evolutionNodes.push({ trait, node });
   }
-  ui.beginPath(); ui.arc(center.x, center.y, 38, 0, Math.PI * 2);
-  ui.fillStyle = '#20273a'; ui.fill(); ui.strokeStyle = '#ffd54f'; ui.lineWidth = 2; ui.stroke();
-  const identityLines = creatureIdentity(owned).split(' ');
-  ui.fillStyle = '#ffd54f'; ui.font = 'bold 9px monospace'; ui.textAlign = 'center';
-  identityLines.slice(0, 3).forEach((word, i) => ui.fillText(word, center.x, center.y + (i - (Math.min(identityLines.length, 3) - 1) / 2) * 11 + 3));
-  const drawNodeIcon = (trait, x, y, radius, color) => {
-    const boss = trait.boss, root = traitRequires(trait).length === 0;
-    ui.beginPath();
-    if (boss) {
-      for (let point = 0; point < 10; point++) {
-        const angle = -Math.PI / 2 + point * Math.PI / 5, r = radius * (point % 2 ? 0.48 : 1);
-        const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
-        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
-      }
-      ui.closePath();
-    } else if (root) {
-      for (let point = 0; point < 6; point++) {
-        const angle = -Math.PI / 2 + point * Math.PI / 3, px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius;
-        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
-      }
-      ui.closePath();
-    } else {
-      const sides = trait.dimension === 'movement' ? 4 : trait.dimension === 'offense' ? 3 : trait.dimension === 'survival' ? 4 : 6;
-      const rotate = trait.dimension === 'movement' ? Math.PI / 4 : -Math.PI / 2;
-      for (let point = 0; point < sides; point++) {
-        const angle = rotate + point * Math.PI * 2 / sides, px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius;
-        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
-      }
-      ui.closePath();
-      if (trait.dimension === 'body') { ui.moveTo(x, y - radius); ui.lineTo(x, y + radius); }
-    }
-    ui.fillStyle = color; ui.fill(); ui.strokeStyle = '#f2f4ff'; ui.lineWidth = 1.5; ui.stroke();
-  };
-  for (const { trait, x, y } of positions.values()) {
-    const state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
-    const color = NICHES[trait.niche].color;
-    drawNodeIcon(trait, x, y, 10, acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a');
-    if (acquired) {
-      ui.fillStyle = '#17301b'; ui.font = 'bold 9px monospace'; ui.fillText('✓', x, y + 3);
-    }
-    const screenX = center.x + treeView.x + (x - center.x) * treeView.zoom;
-    const screenY = center.y + treeView.y + (y - center.y) * treeView.zoom;
-    const boxSize = 28 * treeView.zoom;
-    treeNodeBoxes.push({ trait, x: screenX - boxSize / 2, y: screenY - boxSize / 2, w: boxSize, h: boxSize });
-  }
-  for (const [dimension, angle] of Object.entries(sector)) {
-    const x = center.x + Math.cos(angle) * 320, y = center.y + Math.sin(angle) * 320;
-    ui.fillStyle = DIMENSIONS[dimension].color; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
-    ui.fillText(DIMENSIONS[dimension].short.toUpperCase(), x, y);
-  }
-  ui.restore();
+}
+function updateEvolutionCamera() {
+  const cosPitch = Math.cos(treeView.pitch);
+  evolutionCamera.position.set(
+    Math.sin(treeView.yaw) * cosPitch * treeView.distance,
+    Math.sin(treeView.pitch) * treeView.distance,
+    Math.cos(treeView.yaw) * cosPitch * treeView.distance,
+  );
+  evolutionCamera.lookAt(0, 0, 0);
+}
+function projectEvolutionPosition(position) {
+  const projected = position.clone().project(evolutionCamera);
+  return { x: (projected.x + 1) * W / 2, y: (1 - projected.y) * H / 2, visible: projected.z > -1 && projected.z < 1 };
+}
+function drawTree() {
+  ui.fillStyle = 'rgba(6,8,18,.34)'; ui.fillRect(0, 0, W, H);
+  ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('3D RAZVOJNO DREVO', W / 2, 39);
   ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Sredina: glavna specializacija · šestkotnik: začetek · romb: gibanje · kvadrat: preživetje · trikotnik: boj · zvezda: šef', W / 2, 488);
+  ui.fillText('Povleci za obračanje · kolešček za povečavo · niše so razporejene v različnih prostorskih smereh.', W / 2, 62);
+  treeNodeBoxes = [];
+  for (const { trait, node } of evolutionNodes) {
+    const p = projectEvolutionPosition(node.position);
+    if (!p.visible) continue;
+    const size = clamp(520 / (evolutionCamera.position.distanceTo(node.position) + 10), 12, 30);
+    treeNodeBoxes.push({ trait, x: p.x - size / 2, y: p.y - size / 2, w: size, h: size });
+  }
+  for (const label of evolutionLabels) {
+    const p = projectEvolutionPosition(label.position);
+    ui.fillStyle = NICHES[label.niche].color; ui.font = 'bold 11px monospace';
+    ui.fillText(NICHES[label.niche].name.toUpperCase(), clamp(p.x, 48, W - 48), clamp(p.y, 158, 465));
+  }
+  ui.fillStyle = 'rgba(9,12,24,.82)'; ui.fillRect(340, 82, 280, 46);
+  ui.strokeStyle = evolutionPath.primary ? NICHES[evolutionPath.primary].color : '#ffd54f'; ui.lineWidth = 1.5; ui.strokeRect(340, 82, 280, 46);
+  ui.fillStyle = '#f2f4ff'; ui.font = 'bold 13px monospace';
+  ui.fillText(evolutionPath.primary ? `OSNOVNA NIŠA: ${NICHES[evolutionPath.primary].name}` : 'IZBERI PRVO PRILAGODITEV', W / 2, 101);
+  ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
+  const focus = evolutionPath.secondary ? `Druga smer: ${NICHES[evolutionPath.secondary].name}` : `Ustanovitvene izbire: ${evolutionPath.founderPicks}/3`;
+  ui.fillText(focus, W / 2, 118);
+  ui.fillStyle = '#e8d99a'; ui.font = '11px monospace';
+  ui.fillText(`Tvoja oblika: ${creatureIdentity(owned, evolutionPath)}`, W / 2, 143);
+  ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
+  ui.fillText('Krogla: telesni načrt · oktaeder: gibanje · tetraeder: boj · kocka: preživetje · ikosaeder: začetek · dodekaeder: šef', W / 2, 482);
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
   ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
   if (treeHoverTrait) {
     const tipW = 320, tipH = 150;
     const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 76, H - tipH - 38);
+    const pathOpen = traitAllowedByPath(treeHoverTrait, evolutionPath);
     ui.fillStyle = 'rgba(9,12,24,.98)'; ui.fillRect(x, y, tipW, tipH);
     ui.strokeStyle = NICHES[treeHoverTrait.niche].color; ui.lineWidth = 2; ui.strokeRect(x, y, tipW, tipH);
     ui.textAlign = 'left'; ui.fillStyle = NICHES[treeHoverTrait.niche].color; ui.font = 'bold 14px monospace'; ui.fillText(treeHoverTrait.name, x + 12, y + 22);
@@ -1363,8 +1427,9 @@ function drawTree() {
     wrap('Pogoji: ' + (requirements.length ? requirements.join(' + ') : 'začetna prilagoditev'), tipW - 24).slice(0, 2)
       .forEach((line, i) => ui.fillText(line, x + 12, y + 98 + i * 15));
     const exclusions = treeHoverTrait.excludes || [];
-    wrap(exclusions.length ? 'Nezdružljivo z: ' + exclusions.map(id => TRAIT_BY_ID[id].name).join(', ') : 'Brez nezdružljivih lastnosti', tipW - 24).slice(0, 1)
-      .forEach((line, i) => ui.fillText(line, x + 12, y + 135 + i * 15));
+    const blockedText = !pathOpen ? 'Zaklenjeno: razvojna smer ni izbrana' : exclusions.length
+      ? 'Nezdružljivo z: ' + exclusions.map(id => TRAIT_BY_ID[id].name).join(', ') : 'Brez nezdružljivih lastnosti';
+    wrap(blockedText, tipW - 24).slice(0, 1).forEach((line, i) => ui.fillText(line, x + 12, y + 135 + i * 15));
     ui.textAlign = 'center';
   }
 }
@@ -1428,7 +1493,7 @@ let picksTotal = 2, picksDone = 0;
 function nextChoice() {
   while (queue.length) {
     const k = queue.shift();
-    const opts = k === 'boss' ? bossOffers(owned) : k === 'secret' ? secretOffers(owned) : offers(owned, 3);
+    const opts = k === 'boss' ? bossOffers(owned) : k === 'secret' ? secretOffers(owned, evolutionPath) : offers(owned, 3, evolutionPath);
     if (opts.length) { choice = { kind: k, options: opts, hover: -1 }; choiceCool = 0.4; choiceModelRotation = 0; return; }
   }
   choice = null;
@@ -1437,6 +1502,14 @@ function nextChoice() {
 function pick(opt) {
   const previousSynergies = new Set(stats.synergies.map(y => y.id));
   if (opt.id.startsWith('g_')) extras[opt.id]++; else owned.add(opt.id);
+  if (opt.secret && evolutionPath.primary && !evolutionPath.secondary && opt.niche !== evolutionPath.primary) {
+    evolutionPath.secondary = opt.niche;
+  }
+  if (!opt.id.startsWith('g_') && !opt.boss && !opt.secret && !opt.syn) {
+    if (!evolutionPath.primary) evolutionPath.primary = opt.niche;
+    else if (!evolutionPath.secondary && opt.niche !== evolutionPath.primary) evolutionPath.secondary = opt.niche;
+    evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
+  }
   const old = stats.maxHp;
   stats = computeStats(owned, extras);
   const newlyUnlocked = stats.synergies.filter(y => !previousSynergies.has(y.id));
@@ -1474,7 +1547,7 @@ uic.addEventListener('pointerdown', e => {
   } else if (mode === 'tree' && e.button === 0) {
     const r = uic.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
     if (x >= 12 && x <= W - 12 && y >= 72 && y <= 480) {
-      treeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: treeView.x, y: treeView.y, moved: false };
+      treeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, yaw: treeView.yaw, pitch: treeView.pitch, moved: false };
       uic.setPointerCapture(e.pointerId);
     }
   } else if (mode === 'play' && e.button === 0) pressed.MouseLeft = true;
@@ -1492,8 +1565,8 @@ uic.addEventListener('pointermove', e => {
   if (treeDrag && treeDrag.pointerId === e.pointerId) {
     if (Math.hypot(e.clientX - treeDrag.startX, e.clientY - treeDrag.startY) > 4) treeDrag.moved = true;
     if (treeDrag.moved) {
-      treeView.x = treeDrag.x + (e.clientX - treeDrag.startX) * W / r.width;
-      treeView.y = treeDrag.y + (e.clientY - treeDrag.startY) * H / r.height;
+      treeView.yaw = treeDrag.yaw + (e.clientX - treeDrag.startX) * 5 / r.width;
+      treeView.pitch = clamp(treeDrag.pitch + (e.clientY - treeDrag.startY) * 4 / r.height, -1.25, 1.25);
     }
   }
   pauseHover = mode === 'pause' && mouse.x >= 315 && mouse.x <= 645
@@ -1524,15 +1597,7 @@ uic.addEventListener('pointercancel', e => {
 uic.addEventListener('wheel', e => {
   if (mode !== 'tree') return;
   e.preventDefault();
-  const r = uic.getBoundingClientRect();
-  mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
-  const center = { x: W / 2, y: 270 }, oldZoom = treeView.zoom;
-  const nextZoom = clamp(oldZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.55, 2.4);
-  const localX = center.x + (mouse.x - center.x - treeView.x) / oldZoom;
-  const localY = center.y + (mouse.y - center.y - treeView.y) / oldZoom;
-  treeView.zoom = nextZoom;
-  treeView.x = mouse.x - center.x - (localX - center.x) * nextZoom;
-  treeView.y = mouse.y - center.y - (localY - center.y) * nextZoom;
+  treeView.distance = clamp(treeView.distance * (e.deltaY < 0 ? 0.9 : 1.1), 18, 75);
 }, { passive: false });
 uic.addEventListener('contextmenu', e => e.preventDefault());
 uic.addEventListener('click', e => {
@@ -1761,9 +1826,12 @@ function drawChoose() {
       : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`;
   ui.fillText(title, W / 2, 44);
   ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
+  const foundationHint = !evolutionPath.primary ? 'Prva izbira določi tvojo osnovno nišo in telesno smer.'
+    : evolutionPath.founderPicks < 3 ? `Začetna usmeritev ${evolutionPath.founderPicks}/3: izberi glavno ali združljivo drugo nišo.`
+      : `Specializacija: ${NICHES[evolutionPath.primary].name}${evolutionPath.secondary ? ' + ' + NICHES[evolutionPath.secondary].name : ''}; druge niše so zaklenjene.`;
   ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.'
     : secret ? 'Starodavne prilagoditve so edinstvene in na voljo samo v skritih brlogih.'
-      : 'Povleci z levo tipko miške za obračanje lika · izberi z miško ali tipkami 1–3.', W / 2, 68);
+      : `${foundationHint} · obračanje: povleci · izbira: miška ali 1–3.`, W / 2, 68);
   const lin = lineage(owned);
   if (lin.length) {
     ui.fillStyle = 'rgba(7,10,20,.96)'; ui.fillRect(12, 88, 244, 154);
@@ -1794,8 +1862,9 @@ function drawChoose() {
     `Zračni skoki: ${stats.airJumps} · bodice: ${stats.thorns}`,
     `Sunek: ${stats.dash ? 'da' : 'ne'} · bonus: ${stats.dashDmg.toFixed(1)}`,
     `Strup: ${stats.poison.toFixed(1)} · ogenj: ${stats.burn.toFixed(1)}`,
+    `Zmanjšanje škode: ${Math.round(stats.damageReduction * 100)} % · med sunkom: 30 %`,
   ];
-  statLines.forEach((line, index) => ui.fillText(line, 708, 128 + index * 15));
+  statLines.forEach((line, index) => ui.fillText(line, 708, 126 + index * 14));
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
     ui.fillStyle = hv ? '#202638' : '#111522'; ui.fillRect(r.x, r.y, r.w, r.h);
@@ -1869,9 +1938,13 @@ function frame(now) {
     animatePlayer(rawDt, time); animateEnemies(rawDt, time); updateCamera(rawDt, time);
   }
   if (secretRig) secretRig.group.visible = !showcase();
-  renderer.render(scene, camera);
+  if (mode === 'tree') {
+    buildEvolutionTree();
+    updateEvolutionCamera();
+    renderer.render(evolutionScene, evolutionCamera);
+  } else renderer.render(scene, camera);
   ui.clearRect(0, 0, W, H);
-  if (player && mode !== 'menu') { if (mode !== 'choose') drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
+  if (player && mode !== 'menu' && mode !== 'tree') { if (mode !== 'choose') drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
   if (mode === 'menu') drawMenu();
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
