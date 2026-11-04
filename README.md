@@ -14,9 +14,15 @@ Igro odpri na `http://localhost:8123`.
 
 ## Razvoj in zdravje
 
-Izboljšave so razporejene v štiri povezane smeri: telesni načrt, gibanje in življenjski prostor, bojni slog ter preživetje. V premoru odpri radialno drevo: v sredini je ime tvoje glavne nišne specializacije, obarvana vozlišča pa kažejo nišo posamezne prilagoditve. Drevo lahko premikaš z vlečenjem in približaš ali oddaljiš z miškinim koleščkom; oblika vozlišča označuje njegovo razvojno smer. Nekatere napredne prilagoditve zahtevajo kombinacijo več prej izbranih lastnosti; pogoje vidiš ob pomiku kazalca nad vozlišče. Kartice in drevo prikazujejo le veje, ki so ob upoštevanju že izbranih nezdružljivih prilagoditev še dosegljive.
+Prve tri običajne izbire zgradijo temelj organizma: prva določi glavno nišo, v naslednjih dveh lahko izbereš združljivo drugo smer. Po tretji izbiri so druge niše zaklenjene; nezdružljivi pari, kot sta voda–ogenj in voda–zrak, se ne ponudijo. Posebne šefovske in skrite prilagoditve ostanejo ločene od teh treh ustanovitvenih izbir.
 
-Med izbiro izboljšave so prikazane trenutne statistike stvora. Lik obračaš z vlečenjem miške; levi klik napade, desni pa izvede odklenjeni sunek. Telesna oblika se postopno razvija z vlaganjem v niše in prilagoditve. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+V premoru odpri 3D-razvojno drevo: niše so v različnih prostorskih smereh, barve označujejo niše, oblike vozlišč pa razvojno smer. Drevo obračaš z vlečenjem miške in približuješ z miškinim koleščkom. Nekatere napredne prilagoditve zahtevajo več prej izbranih lastnosti; pogoje in zaklenjene smeri vidiš ob pomiku kazalca nad vozlišče.
+
+Med izbiro izboljšave so prikazane trenutne statistike stvora. Lik obračaš z vlečenjem miške; levi klik napade, desni pa izvede odklenjeni sunek. Telesna oblika se postopno razvija z vlaganjem v niše in prilagoditve: okončine se podaljšujejo z razvojem, perje in krila pa dobivajo več podrobnosti. Če stopnjo zaključiš z največ petino zdravja, se v naslednji stopnji pojavi drevo: sadež dozori, pade na tla in ob dotiku povrne petino največjega zdravja (zaokroženo navzdol, najmanj 1).
+
+Kamnite luske zmanjšajo prejeto škodo, jadralni napad okrepi sunek, škrge in krvni vonj pa odpirajo dodatne poti preživetja in plenjenja. Epidemija je redkejša in šibkejša: za 3 sekunde uporabi 60-odstotni odmerek strupa, nato se polni 24 sekund. Med sunkom prejmeš 30 % manj škode.
+
+V nekaterih stopnjah se pojavi skriti brlog, povezan z eno od tvojih razvitih niš. Poišči kamniti vhod, se mu približaj in pritisni **F**; ob zaključku stopnje dobiš do tri ponudbe starodavnih, edinstvenih prilagoditev in izbereš eno. Šefi se izmenjujejo med Tiranom, Koreninsko matriarhinjo in Nevihtnim zmajem, vsak z drugačnim videzom in napovedanimi napadi.
 
 ## Dnevno-nočni cikel
 
