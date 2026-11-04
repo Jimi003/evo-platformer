@@ -685,7 +685,7 @@ try { localStorage.removeItem('evo-save-v1'); } catch (e) { /* rekord ostane ohr
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
     jumps: 0, atkT: 0, atkCd: 0, spitCd: 0, dashT: 0, dashCd: 0, inv: 0, hurtT: 0, shield: stats.shield,
-    atkHit: new Set(), dashHit: new Set(), phase: 0, acd: {}, haste: 0, curl: 0, meteor: false, meteorUp: 0, breathT: 0 };
+    atkHit: new Set(), dashHit: new Set(), phase: 0, jumpAnim: 0, acd: {}, haste: 0, curl: 0, meteor: false, meteorUp: 0, breathT: 0 };
 }
 let saveNotice = '';
 function savedGameExists() {
@@ -1049,7 +1049,7 @@ function updateSecret() {
 // ---------- Posodobitev ----------
 function updatePlay(dt) {
   const p = player, s = stats;
-  p.inv -= dt; p.hurtT -= dt; p.atkCd -= dt; p.atkT -= dt; p.dashCd -= dt; p.dashT -= dt; p.spitCd -= dt;
+  p.inv -= dt; p.hurtT -= dt; p.atkCd -= dt; p.atkT -= dt; p.dashCd -= dt; p.dashT -= dt; p.spitCd -= dt; p.jumpAnim = Math.max(0, p.jumpAnim - dt);
   p.haste -= dt; p.curl -= dt; p.breathT -= dt;
   for (const id in p.acd) p.acd[id] -= dt;
   const spd = s.speed * (p.haste > 0 ? 1.5 : 1);
@@ -1078,8 +1078,8 @@ function updatePlay(dt) {
   p.coyote = p.ground ? 0.1 : p.coyote - dt; p.buffer -= dt;
   if (p.ground) p.jumps = 0;
   if (hit('Space', 'KeyW', 'ArrowUp')) p.buffer = 0.12;
-  if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; Snd.play('jump'); }
-  else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; Snd.play('air'); burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
+  if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.jumpAnim = 0.42; p.buffer = 0; p.coyote = 0; Snd.play('jump'); }
+  else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumpAnim = 0.42; p.jumps++; p.buffer = 0; Snd.play('air'); burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
   if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0 && !p.meteor) p.vy += 3000 * dt;
   if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight', 'MouseRight') && p.dashCd <= 0) { p.dashT = s.dashDuration; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.55); p.dashHit = new Set(); }
   if (hit('KeyJ', 'MouseLeft') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; Snd.play('atk'); p.atkHit = new Set(); }
@@ -1773,8 +1773,13 @@ function animatePlayer(dt, t) {
   const target = showcase() ? -0.5 + Math.sin(t * 0.9) * 0.55 + choiceModelRotation : p.face > 0 ? -0.4 : Math.PI + 0.4;
   rig.model.rotation.y += angDiff(rig.model.rotation.y, target) * Math.min(1, dt * (showcase() ? 3 : 14));
   const speed = Math.abs(p.vx), mv = p.ground && speed > 30 ? 1 : 0;
-  const jumpCoil = p.ground ? 0 : clamp(1 - Math.abs(p.vy) / 650, 0, 1);
-  p.phase += dt * (6 + speed / 28) * (mv ? 1 : 0);
+  const airborne = !p.ground && mode === 'play';
+  const jumpProgress = p.jumpAnim > 0 ? 1 - p.jumpAnim / 0.42 : 1;
+  const jumpCoil = p.jumpAnim > 0
+    ? jumpProgress < 0.35 ? jumpProgress / 0.35 : jumpProgress < 0.7 ? 1 - (jumpProgress - 0.35) / 0.35 : 0
+    : 0;
+  const jumpExtend = p.jumpAnim > 0 ? Math.sin(jumpProgress * Math.PI) : 0;
+  p.phase += dt * (airborne ? 12 : 6 + speed / 28) * (airborne || mv ? 1 : 0);
   const sw = Math.sin(p.phase);
   rig.legs.forEach((leg, i) => {
     const stride = i % 2 ? -1 : 1;
@@ -1787,11 +1792,12 @@ function animatePlayer(dt, t) {
   });
   rig.tail.forEach((s, i) => { s.rotation.y = Math.sin(t * 5 + i * 0.7) * 0.22 * (1 + mv); s.rotation.z = -0.04 * i + Math.sin(t * 4 + i) * 0.05 + (mv ? 0.05 : 0); });
   rig.bodySegments.forEach((segment, i) => {
-    const wave = Math.sin(t * 8 - i * 0.9 + p.phase) * (0.025 + mv * 0.035);
-    const arc = (i - 1.5) * jumpCoil;
-    segment.position.y = segment.userData.baseY + wave + Math.abs(arc) * 0.035;
-    segment.rotation.z = Math.sin(t * 7 - i * 0.85 + p.phase) * (0.04 + mv * 0.08) + arc * 0.13;
-    if (p.curl > 0) segment.rotation.z += (i - 1.5) * 0.12;
+    const center = (rig.bodySegments.length - 1) / 2, offset = i - center;
+    const wave = Math.sin(p.phase - i * 0.8) * (airborne ? 0.075 : mv ? 0.035 : 0.008);
+    const curl = offset * jumpCoil * 0.16;
+    segment.position.y = segment.userData.baseY + wave + Math.sin(i / (rig.bodySegments.length - 1) * Math.PI) * jumpExtend * 0.065;
+    segment.rotation.z = Math.sin(p.phase - i * 0.8) * (airborne ? 0.24 : mv ? 0.1 : 0.015) + curl;
+    if (p.curl > 0) segment.rotation.z += offset * 0.12;
   });
   const flapping = !p.ground && mode === 'play';
   const flap = flapping ? (p.gliding ? 0.15 : Math.sin(t * 18) * 0.9) : 0.2 + Math.sin(t * 2) * 0.05;
@@ -1800,10 +1806,12 @@ function animatePlayer(dt, t) {
   rig.glands.forEach(m => { m.emissiveIntensity = 0.55 + 0.4 * Math.sin(t * 3); });
   if (rig.glow) rig.glow.material.opacity = 0.1 + 0.05 * Math.sin(t * 2.5);
   rig.torso.rotation.z = -Math.min(1, speed / stats.speed) * 0.12 - (p.dashT > 0 ? 0.35 : 0);
-  rig.torso.scale.y = 1 + 0.025 * Math.sin(t * 3) + (p.ground ? 0 : 0.035);
-  const st = clamp(-p.vy / 2500, -0.1, 0.1), bs = rig.baseScale;
-  rig.model.scale.set(bs * (1 - st * 0.5) * (p.dashT > 0 ? 1.25 : p.curl > 0 ? 1.1 : 1),
-    bs * (1 + st) * (p.curl > 0 ? 0.62 : 1), bs * (1 - st * 0.5));
+  rig.torso.scale.y = 1 + (p.ground ? 0.015 : 0.04 * Math.sin(p.phase));
+  const bs = rig.baseScale, airborneStretch = airborne ? clamp(-p.vy / Math.max(stats.jump, 1), 0, 1) * 0.16 : 0;
+  const stretch = airborneStretch + jumpExtend * 0.12;
+  rig.model.scale.set(bs * (1 + stretch) * (p.dashT > 0 ? 1.25 : p.curl > 0 ? 1.1 : 1),
+    bs * (1 - stretch * 0.55 + jumpCoil * 0.12) * (p.curl > 0 ? 0.62 : 1),
+    bs * (1 - stretch * 0.2));
   setGlow(rig, p.curl > 0 ? '#9be15d' : p.haste > 0 ? '#7fd8ff' : p.meteor ? '#ffb347' : '#ffffff', mode !== 'play' ? 0 : p.hurtT > 0 ? 0.9 : p.curl > 0 ? 0.55 + 0.2 * Math.sin(t * 20) : p.haste > 0 || p.meteor ? 0.4 : 0);
   if (rig.flame) { rig.flame.forEach((f, i) => { f.scale.y = f.userData.h * (0.8 + 0.35 * Math.sin(t * 14 + i * 2)); }); }
   if (rig.mouthGlow) rig.mouthGlow.material.emissiveIntensity = p.breathT > 0 ? 2.5 : 0.6 + 0.3 * Math.sin(t * 4);
