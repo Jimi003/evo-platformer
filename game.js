@@ -47,7 +47,7 @@ const THEMES = [
   { sky: ['#2a4a7a', '#e8f4ff'], fog: '#9ab8e0', ground: '#56688a', top: '#e8f4ff', far: '#6a86b8', far2: '#8aa6d0', far3: '#c0d4f0', tree: '#8ab0c8', tree2: '#e8f4ff', glow: '#ffffff', style: 'pine', stars: false, accent: '#9ad8ff' },
   { sky: ['#10061f', '#7a2a9a'], fog: '#3a1a5a', ground: '#2e2244', top: '#b455d6', far: '#241044', far2: '#4a2a7a', far3: '#7a3a9a', tree: '#5a2a8a', tree2: '#e29bff', glow: '#e29bff', style: 'mushroom', stars: true, accent: '#7affd0' },
 ];
-let roomGroup = null, roomMats = [], roomTextures = [], roomGeometries = [], fireflies = [], cloudGroups = [], skyTex = null, fruitRig = null, wetLevel = null, waterFlowTexture = null;
+let roomGroup = null, roomMats = [], roomTextures = [], roomGeometries = [], fireflies = [], cloudGroups = [], birds = [], skyTex = null, fruitRig = null, wetLevel = null, waterFlowTexture = null;
 function skyTexture(a, b) {
   const c = document.createElement('canvas'); c.width = 2; c.height = 256;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
@@ -180,9 +180,11 @@ function updateDayNight(dt = 0, force = false) {
     dayNightRig.halo.opacity = sunVisibility * 0.14 * cloudFactor;
     dayNightRig.moon.position.set(moonX, moonY, -34);
     dayNightRig.moon.material.opacity = night * 0.95;
+    dayNightRig.moon.visible = night > 0.01;
     dayNightRig.moon.material.map.userData.setPhase(moonPhase);
     dayNightRig.moonGlow.position.set(moonX, moonY, -34.2);
     dayNightRig.moonGlow.material.opacity = night * moonIllumination * 0.15;
+    dayNightRig.moonGlow.visible = night > 0.01 && moonIllumination > 0.01;
     dayNightRig.stars.opacity = night * (1 - cloudShade * 0.3);
     dayNightRig.clouds.forEach(cloud => cloud.children.forEach(mesh => { mesh.material.opacity = 0.14 + dayFactor * 0.1; }));
     dayNightRig.shafts.opacity = dayFactor * 0.018 * cloudFactor;
@@ -199,7 +201,7 @@ function buildRoomScene() {
   fruitRig = null;
   dayNightRig = null;
   waterFlowTexture = null;
-  roomMats = []; roomTextures = []; roomGeometries = []; fireflies = []; cloudGroups = [];
+  roomMats = []; roomTextures = []; roomGeometries = []; fireflies = []; cloudGroups = []; birds = [];
   const th = THEMES[(room - 1) % THEMES.length];
   const M = (c, o) => { const m = stdMat(c, o); roomMats.push(m); return m; };
   roomGroup = new THREE.Group(); scene.add(roomGroup);
@@ -264,6 +266,7 @@ function buildRoomScene() {
     for (let k = 0; k < 4; k++) mk(cloud, GEO.sph, cloudM, [k * 1.4 - 2.1, (k % 2) * 0.35, 0], [rand(1.8, 2.7), rand(0.8, 1.2), 0.65]).castShadow = false;
     cloudGroups.push(cloud);
   }
+  addBackgroundBirds();
   const starM = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false }); roomMats.push(starM);
   for (let i = 0; i < 70; i++) mk(roomGroup, GEO.sph, starM, [rand(-20, 45), rand(8, 28), -80], [0.09, 0.09, 0.09]).castShadow = false;
   const t2M = M(th.tree2), flowerM = glowMat(th.accent, 0.6); roomMats.push(flowerM);
@@ -320,6 +323,55 @@ function buildRoomScene() {
   dayNightRig = { sun: sunMesh, moon: moonMesh, sunGlow, moonGlow, stars: starM, halo: sunHalo.material, haloMesh: sunHalo,
     shafts: shaftM, fireflies: fireflyM, clouds: cloudGroups, cloudMaterial: cloudM };
   updateDayNight(0, true);
+}
+function addBackgroundBirds() {
+  const palettes = ['#263447', '#e7e1d2', '#4c4a54', '#263a32'];
+  const flockCount = 3 + Math.floor(Math.random() * 5);
+  for (let flock = 0; flock < flockCount; flock++) {
+    const count = 1 + Math.floor(Math.random() * 5);
+    const direction = Math.random() < 0.5 ? -1 : 1;
+    const startX = rand(-12, WORLD_W / 40 + 12), y = rand(7, 12), z = rand(-18, -12);
+    const speed = rand(0.7, 1.8) * direction, color = palettes[Math.floor(Math.random() * palettes.length)];
+    const material = new THREE.MeshBasicMaterial({ color });
+    roomMats.push(material);
+    for (let i = 0; i < count; i++) {
+      const bird = new THREE.Group();
+      const type = Math.floor(Math.random() * 3);
+      const body = mk(bird, GEO.sph, material, [0, 0, 0], type === 1 ? [0.17, 0.04, 0.04] : type === 2 ? [0.11, 0.055, 0.05] : [0.12, 0.045, 0.04]);
+      body.castShadow = false;
+      mk(bird, GEO.cone, material, [0.12, 0, 0], [0.035, 0.12, 0.035], [0, 0, Math.PI / 2]).castShadow = false;
+      const wings = [];
+      for (const side of [-1, 1]) {
+        const wing = new THREE.Group();
+        wing.position.x = side * 0.055;
+        bird.add(wing);
+        const span = (type === 1 ? rand(0.2, 0.28) : type === 2 ? rand(0.1, 0.16) : rand(0.14, 0.22));
+        mk(wing, GEO.box, material, [side * span * 0.45, 0, 0], [span, type === 1 ? 0.035 : 0.025, 0.025]).castShadow = false;
+        mk(wing, GEO.cone, material, [side * span, 0, 0], [0.035, span * 0.55, 0.035], [0, 0, side * Math.PI / 2]).castShadow = false;
+        wings.push({ pivot: wing, side });
+      }
+      if (type === 2) mk(bird, GEO.cone, material, [-0.13, 0, 0], [0.04, 0.15, 0.04], [0, 0, -Math.PI / 2]).castShadow = false;
+      const scale = rand(1.2, 1.9);
+      bird.scale.setScalar(scale);
+      bird.rotation.y = direction < 0 ? Math.PI : 0;
+      bird.position.set(startX - direction * i * rand(0.45, 0.9), y + rand(-0.45, 0.45), z + rand(-1.5, 1.5));
+      bird.userData = { speed: speed * rand(0.88, 1.12), phase: rand(0, Math.PI * 2), wings, direction };
+      roomGroup.add(bird);
+      birds.push(bird);
+    }
+  }
+}
+function updateBirds(dt, t) {
+  const minX = -16, maxX = WORLD_W / 40 + 16;
+  for (const bird of birds) {
+    const data = bird.userData;
+    bird.position.x += data.speed * dt;
+    if (data.speed > 0 && bird.position.x > maxX) bird.position.x = minX;
+    else if (data.speed < 0 && bird.position.x < minX) bird.position.x = maxX;
+    data.wings.forEach(({ pivot, side }) => {
+      pivot.rotation.z = side * (0.25 + Math.sin(t * 9 + data.phase) * 0.42);
+    });
+  }
 }
 function addGroundPlants(th, M) {
   const grass = [M('#477b43'), M('#67964a'), M('#8da95b')], moss = M('#55734a');
@@ -454,6 +506,7 @@ const disposeObj = o => o.traverse(c => {
 
 // ---------- Vhod ----------
 const keys = {}, pressed = {};
+let choiceDrag = null, suppressChoiceClick = false, choiceModelRotation = 0;
 addEventListener('keydown', e => {
   if (!keys[e.code]) pressed[e.code] = true;
   keys[e.code] = true;
@@ -822,8 +875,8 @@ function updatePlay(dt) {
   if (p.buffer > 0 && p.coyote > 0) { p.vy = -s.jump; p.buffer = 0; p.coyote = 0; Snd.play('jump'); }
   else if (p.buffer > 0 && p.jumps < s.airJumps) { p.vy = -s.jump * 0.9; p.jumps++; p.buffer = 0; Snd.play('air'); burst(p.x + 14, p.y + 36, '#4fc3f7', 6); }
   if (!down('Space', 'KeyW', 'ArrowUp') && p.vy < -200 && p.dashT <= 0 && !p.meteor) p.vy += 3000 * dt;
-  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.55); p.dashHit = new Set(); }
-  if (hit('KeyJ') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; Snd.play('atk'); p.atkHit = new Set(); }
+  if (s.dash && hit('KeyK', 'ShiftLeft', 'ShiftRight', 'MouseRight') && p.dashCd <= 0) { p.dashT = 0.16; p.dashCd = s.dashCd; Snd.play('dash'); p.inv = Math.max(p.inv, 0.55); p.dashHit = new Set(); }
+  if (hit('KeyJ', 'MouseLeft') && p.atkCd <= 0) { p.atkCd = s.atkCd * (p.haste > 0 ? 0.6 : 1); p.atkT = 0.12; Snd.play('atk'); p.atkHit = new Set(); }
   if (s.spit && hit('KeyL') && p.spitCd <= 0) { p.spitCd = s.spitCd; Snd.play('spit'); pshots.push({ x: p.x + p.w / 2, y: p.y + 14, vx: p.face * 560, vy: 0 }); }
   const vy0 = p.vy, wasG = p.ground;
   moveBody(p, dt);
@@ -1016,8 +1069,8 @@ function drawMenu() {
     ui.fillText(`Rekord: ${best.room}. stopnja · premagani šefi: ${best.bosses}`, W / 2, 485);
   }
   ui.fillStyle = '#aab'; ui.font = '13px monospace';
-  ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J: napad', W / 2, 504);
-  ui.fillText('K/Shift: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
+  ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J/levi klik: napad', W / 2, 504);
+  ui.fillText('K/Shift/desni klik: sunek · L: izstrelek · E/Q/R: sposobnosti · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
@@ -1073,41 +1126,39 @@ function drawPauseSynergies() {
 function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
-  ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
+  ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
   ui.fillText('Od začetne sluzi se veje navzven; barva vozlišča označuje nišo, povezave pa pogoje za odklep.', W / 2, 62);
   treeNodeBoxes = [];
-  const center = { x: W / 2, y: 274 };
+  const center = { x: W / 2, y: 270 };
   const sector = { body: -Math.PI / 2, movement: 0, offense: Math.PI / 2, survival: Math.PI };
   const positions = new Map();
-  for (const [dimension, angle] of Object.entries(sector)) {
-    const roots = TRAITS.filter(t => t.dimension === dimension && traitRequires(t).length === 0);
-    roots.forEach((trait, i) => {
-      const lane = Math.floor(i / 4), slot = i % 4;
-      positions.set(trait.id, { trait, angle: angle + (slot - 1.5) * 0.42, radius: 38 + lane * 20 });
+  const tiers = new Map();
+  for (const trait of TRAITS) {
+    const key = `${trait.dimension}:${traitTier(trait)}`;
+    if (!tiers.has(key)) tiers.set(key, []);
+    tiers.get(key).push(trait);
+  }
+  for (const [key, traits] of tiers) {
+    const [dimension, tierText] = key.split(':'), angle = sector[dimension], tier = Number(tierText);
+    traits.forEach((trait, index) => {
+      const lane = Math.floor(index / 4), count = Math.min(4, traits.length - lane * 4), slot = index % 4;
+      const radius = 44 + (tier - 1) * 40 + lane * 22;
+      const nodeAngle = angle + (slot - (count - 1) / 2) * 0.5;
+      positions.set(trait.id, { trait, x: Math.cos(nodeAngle) * radius, y: Math.sin(nodeAngle) * radius });
     });
   }
-  for (const trait of TRAITS.filter(t => traitRequires(t).length).sort((a, b) => traitTier(a) - traitTier(b))) {
-    const parents = traitRequires(trait).map(id => positions.get(id)).filter(Boolean);
-    if (!parents.length) continue;
-    const avgX = parents.reduce((sum, p) => sum + Math.cos(p.angle), 0);
-    const avgY = parents.reduce((sum, p) => sum + Math.sin(p.angle), 0);
-    const angleBase = Math.atan2(avgY, avgX);
-    const parentIds = traitRequires(trait).join(',');
-    const siblings = TRAITS.filter(t => t.dimension === trait.dimension && traitRequires(t).join(',') === parentIds);
-    const siblingIndex = siblings.indexOf(trait);
-    const spread = (siblingIndex - (siblings.length - 1) / 2) * 0.3;
-    positions.set(trait.id, { trait, angle: angleBase + spread, radius: Math.max(...parents.map(p => p.radius)) + 27 });
-  }
-  const maxRadius = Math.max(...[...positions.values()].map(p => p.radius));
-  const fit = Math.min(1, 170 / maxRadius);
-  for (const p of positions.values()) {
-    p.x = center.x + Math.cos(p.angle) * p.radius * fit;
-    p.y = center.y + Math.sin(p.angle) * p.radius * fit;
-  }
+  const maxRadius = Math.max(...[...positions.values()].map(p => Math.hypot(p.x, p.y)));
+  const fit = Math.min(1, 195 / maxRadius);
+  for (const p of positions.values()) { p.x = center.x + p.x * fit; p.y = center.y + p.y * fit; }
   for (const trait of TRAITS) {
     const to = positions.get(trait.id);
     if (!to) continue;
-    for (const requiredId of traitRequires(trait)) {
+    const requirements = traitRequires(trait);
+    if (!requirements.length) {
+      ui.beginPath(); ui.moveTo(center.x, center.y); ui.lineTo(to.x, to.y);
+      ui.strokeStyle = owned.has(trait.id) ? '#9be15d' : NICHES[trait.niche].color + '88'; ui.lineWidth = 1.5; ui.stroke();
+    }
+    for (const requiredId of requirements) {
       const from = positions.get(requiredId);
       if (!from) continue;
       ui.beginPath();
@@ -1118,29 +1169,53 @@ function drawTree() {
       ui.stroke();
     }
   }
-  ui.beginPath(); ui.arc(center.x, center.y, 22, 0, Math.PI * 2);
+  ui.beginPath(); ui.arc(center.x, center.y, 26, 0, Math.PI * 2);
   ui.fillStyle = '#20273a'; ui.fill(); ui.strokeStyle = '#ffd54f'; ui.lineWidth = 2; ui.stroke();
-  ui.fillStyle = '#ffd54f'; ui.font = 'bold 10px monospace'; ui.textAlign = 'center'; ui.fillText('SLUZ', center.x, center.y + 3);
+  ui.fillStyle = '#ffd54f'; ui.font = 'bold 11px monospace'; ui.textAlign = 'center'; ui.fillText('SLUZ', center.x, center.y + 4);
+  const drawNodeIcon = (trait, x, y, radius, color) => {
+    const boss = trait.boss, root = traitRequires(trait).length === 0;
+    ui.beginPath();
+    if (boss) {
+      for (let point = 0; point < 10; point++) {
+        const angle = -Math.PI / 2 + point * Math.PI / 5, r = radius * (point % 2 ? 0.48 : 1);
+        const px = x + Math.cos(angle) * r, py = y + Math.sin(angle) * r;
+        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
+      }
+      ui.closePath();
+    } else if (root) {
+      for (let point = 0; point < 6; point++) {
+        const angle = -Math.PI / 2 + point * Math.PI / 3, px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius;
+        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
+      }
+      ui.closePath();
+    } else {
+      const sides = trait.dimension === 'movement' ? 4 : trait.dimension === 'offense' ? 3 : trait.dimension === 'survival' ? 4 : 6;
+      const rotate = trait.dimension === 'movement' ? Math.PI / 4 : -Math.PI / 2;
+      for (let point = 0; point < sides; point++) {
+        const angle = rotate + point * Math.PI * 2 / sides, px = x + Math.cos(angle) * radius, py = y + Math.sin(angle) * radius;
+        if (point === 0) ui.moveTo(px, py); else ui.lineTo(px, py);
+      }
+      ui.closePath();
+      if (trait.dimension === 'body') { ui.moveTo(x, y - radius); ui.lineTo(x, y + radius); }
+    }
+    ui.fillStyle = color; ui.fill(); ui.strokeStyle = '#f2f4ff'; ui.lineWidth = 1.5; ui.stroke();
+  };
   for (const { trait, x, y } of positions.values()) {
     const state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
     const color = NICHES[trait.niche].color;
-    ui.beginPath(); ui.arc(x, y, 7, 0, Math.PI * 2);
-    ui.fillStyle = acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a';
-    ui.fill();
-    ui.strokeStyle = acquired ? '#dcffd2' : unlocked ? '#fff' : state === 'blocked' ? '#b76572' : color + '88';
-    ui.lineWidth = acquired || unlocked ? 2 : 1; ui.stroke();
+    drawNodeIcon(trait, x, y, 8.5, acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a');
     if (acquired) {
-      ui.fillStyle = '#17301b'; ui.font = 'bold 8px monospace'; ui.fillText('✓', x, y + 3);
+      ui.fillStyle = '#17301b'; ui.font = 'bold 9px monospace'; ui.fillText('✓', x, y + 3);
     }
-    treeNodeBoxes.push({ trait, x: x - 10, y: y - 10, w: 20, h: 20 });
+    treeNodeBoxes.push({ trait, x: x - 12, y: y - 12, w: 24, h: 24 });
   }
   for (const [dimension, angle] of Object.entries(sector)) {
-    const x = center.x + Math.cos(angle) * 190, y = center.y + Math.sin(angle) * 190;
-    ui.fillStyle = DIMENSIONS[dimension].color; ui.font = 'bold 10px monospace'; ui.textAlign = 'center';
+    const x = center.x + Math.cos(angle) * 226, y = clamp(center.y + Math.sin(angle) * 226, 82, 468);
+    ui.fillStyle = DIMENSIONS[dimension].color; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
     ui.fillText(DIMENSIONS[dimension].short.toUpperCase(), x, y);
   }
-  ui.fillStyle = '#99a5bc'; ui.font = '10px monospace';
-  ui.fillText('Štiri razvojne smeri: telo · gibanje · boj · preživetje', W / 2, 490);
+  ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
+  ui.fillText('Oblika označuje smer vozlišča · začetna lastnost: šestkotnik · boj: trikotnik · šef: zvezda', W / 2, 488);
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
   ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
@@ -1223,7 +1298,7 @@ function nextChoice() {
   while (queue.length) {
     const k = queue.shift();
     const opts = k === 'boss' ? bossOffers(owned) : offers(owned, 3);
-    if (opts.length) { choice = { kind: k, options: opts, hover: -1 }; choiceCool = 0.4; return; }
+    if (opts.length) { choice = { kind: k, options: opts, hover: -1 }; choiceCool = 0.4; choiceModelRotation = 0; return; }
   }
   choice = null;
   startRoom();
@@ -1255,15 +1330,28 @@ function advanceSynergyCard() {
   mode = 'choose';
   nextChoice();
 }
-function cardRect(i) { return { x: 30 + i * 305, y: i === choice.hover ? 346 : 356, w: 290, h: 176 }; }
+function cardRect(i) { return { x: 30 + i * 305, y: i === choice.hover ? 342 : 350, w: 290, h: 178 }; }
 function hoverIndex() {
   if (!choice) return -1;
-  for (let i = 0; i < choice.options.length; i++) { const r = cardRect(i); if (mouse.x > r.x && mouse.x < r.x + r.w && mouse.y > 340 && mouse.y < r.y + r.h) return i; }
+  for (let i = 0; i < choice.options.length; i++) { const r = cardRect(i); if (mouse.x > r.x && mouse.x < r.x + r.w && mouse.y > r.y && mouse.y < r.y + r.h) return i; }
   return -1;
 }
-uic.addEventListener('mousemove', e => {
+uic.addEventListener('pointerdown', e => {
+  if (mode === 'choose' && e.button === 0) {
+    choiceDrag = { pointerId: e.pointerId, startX: e.clientX, lastX: e.clientX, moved: false };
+    uic.setPointerCapture(e.pointerId);
+  } else if (mode === 'play' && e.button === 0) pressed.MouseLeft = true;
+  else if (mode === 'play' && e.button === 2) { e.preventDefault(); pressed.MouseRight = true; }
+});
+uic.addEventListener('pointermove', e => {
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
+  if (choiceDrag && choiceDrag.pointerId === e.pointerId) {
+    const dx = e.clientX - choiceDrag.lastX;
+    if (Math.abs(e.clientX - choiceDrag.startX) > 4) choiceDrag.moved = true;
+    if (choiceDrag.moved) choiceModelRotation += dx / r.width * Math.PI * 2;
+    choiceDrag.lastX = e.clientX;
+  }
   pauseHover = mode === 'pause' && mouse.x >= 315 && mouse.x <= 645
     ? [108, 146, 184, 222].findIndex(y => mouse.y >= y && mouse.y <= y + 36) : -1;
   pauseSynHover = -1;
@@ -1275,7 +1363,17 @@ uic.addEventListener('mousemove', e => {
     ? (treeNodeBoxes.find(box => box.y >= 68 && box.y + box.h <= 488 && mouse.x >= box.x && mouse.x <= box.x + box.w && mouse.y >= box.y && mouse.y <= box.y + box.h) || {}).trait || null
     : null;
 });
+uic.addEventListener('pointerup', e => {
+  if (!choiceDrag || choiceDrag.pointerId !== e.pointerId) return;
+  suppressChoiceClick = choiceDrag.moved;
+  choiceDrag = null;
+});
+uic.addEventListener('pointercancel', e => {
+  if (choiceDrag && choiceDrag.pointerId === e.pointerId) choiceDrag = null;
+});
+uic.addEventListener('contextmenu', e => e.preventDefault());
 uic.addEventListener('click', e => {
+  if (suppressChoiceClick) { suppressChoiceClick = false; return; }
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
   if (mode === 'menu') {
@@ -1327,7 +1425,7 @@ function animatePlayer(dt, t) {
   const p = player, rig = pRig;
   pRoot.position.set(wx(p.x + p.w / 2), wy(p.y + p.h), 0);
   pRoot.visible = !(p.inv > 0 && Math.floor(p.inv * 20) % 2 && p.dashT <= 0 && mode === 'play');
-  const target = showcase() ? -0.5 + Math.sin(t * 0.9) * 0.55 : p.face > 0 ? -0.4 : Math.PI + 0.4;
+  const target = showcase() ? -0.5 + Math.sin(t * 0.9) * 0.55 + choiceModelRotation : p.face > 0 ? -0.4 : Math.PI + 0.4;
   rig.model.rotation.y += angDiff(rig.model.rotation.y, target) * Math.min(1, dt * (showcase() ? 3 : 14));
   const speed = Math.abs(p.vx), mv = p.ground && speed > 30 ? 1 : 0;
   p.phase += dt * (6 + speed / 28) * (mv ? 1 : 0);
@@ -1401,7 +1499,7 @@ let camX = 12, camY = 7, camZ = 20, lookX = 12, lookY = 6.9;
 function updateCamera(dt, t) {
   const pcx = wx(player.x + player.w / 2), pcy = wy(player.y + player.h / 2);
   let tx, ty, tz, lx, ly;
-  if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 0.75; }
+  if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 1.35; }
   else { tx = clamp(pcx, 12, WORLD_W / 40 - 12); ty = 6.9 + (pcy - 6.9) * 0.08; tz = 20; lx = tx; ly = ty; }
   const k = Math.min(1, dt * (showcase() ? 3 : 4));
   camX += (tx - camX) * k; camY += (ty - camY) * k; camZ += (tz - camZ) * k; lookX += (lx - lookX) * k; lookY += (ly - lookY) * k;
@@ -1464,64 +1562,74 @@ function drawHUD() {
   if (toastT > 0 && mode === 'play') { ui.textAlign = 'center'; ui.font = '22px monospace'; ui.fillStyle = `rgba(255,255,255,${Math.min(1, toastT)})`; ui.fillText(toastText, W / 2, 120); ui.textAlign = 'left'; }
 }
 function drawChoose() {
-  const gr = ui.createLinearGradient(0, 240, 0, H);
-  gr.addColorStop(0, 'rgba(8,10,22,0)'); gr.addColorStop(0.35, 'rgba(8,10,22,.82)'); gr.addColorStop(1, 'rgba(8,10,22,.95)');
-  ui.fillStyle = gr; ui.fillRect(0, 240, W, H - 240);
+  ui.fillStyle = 'rgba(4,7,16,.96)'; ui.fillRect(0, 310, W, H - 310);
   const boss = choice.kind === 'boss';
   ui.textAlign = 'center'; ui.font = 'bold 26px monospace';
   ui.fillStyle = boss ? '#ffd54f' : '#fff';
   ui.fillText(boss ? 'NAGRADA ZA PORAZ ŠEFA – izberi eno' : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`, W / 2, 44);
-  ui.font = '13px monospace'; ui.fillStyle = '#aab';
-  ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.' : 'Izbira lastnosti zapre sorodno vejo. Rožnata kartica je sinergija dveh že izbranih lastnosti.', W / 2, 66);
-  ui.textAlign = 'left'; ui.font = '12px monospace';
-  const inv = nicheInvest(owned);
-  Object.keys(inv).forEach((k, i) => {
-    const x = 530 + (i % 3) * 140, y = 92 + Math.floor(i / 3) * 20;
-    ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(x, y - 13, 132, 18);
-    ui.fillStyle = NICHES[k].color; ui.fillRect(x, y - 13, 4, 18);
-    ui.fillText(NICHES[k].name + (inv[k] ? ' ' + '●'.repeat(Math.min(5, inv[k])) : ''), x + 10, y);
-  });
+  ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
+  ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.' : 'Povleci z levo tipko miške za obračanje lika · izberi z miško ali tipkami 1–3.', W / 2, 68);
   const lin = lineage(owned);
-  if (lin.length) { ui.fillStyle = 'rgba(8,10,22,.6)'; ui.fillRect(10, 150, 470, 12 + lin.length * 17); }
-  lin.forEach((l, i) => { ui.fillStyle = NICHES[l.niche].color; ui.fillText(`${NICHES[l.niche].name}: ${l.text}`, 20, 166 + i * 17); });
-  ui.fillStyle = 'rgba(8,10,22,.7)'; ui.fillRect(500, 148, 450, 96);
-  ui.strokeStyle = '#59627a'; ui.lineWidth = 1; ui.strokeRect(500, 148, 450, 96);
-  ui.textAlign = 'left'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 12px monospace'; ui.fillText('STATISTIKA STVORA', 514, 166);
-  ui.font = '12px monospace'; ui.fillStyle = '#dce3f7';
-  const col1 = [`Zdravje: ${player.hp.toFixed(1)} / ${stats.maxHp}`, `Škoda: ${stats.dmg.toFixed(1)} · doseg: ${stats.reach}`,
-    `Hitrost: ${Math.round(stats.speed)} · skok: ${Math.round(stats.jump)}`, `Zračni skoki: ${stats.airJumps} · bodice: ${stats.thorns}`];
-  const col2 = [`Napadi: ${(1 / stats.atkCd).toFixed(1)} / s`, `Obnova: ${stats.regen.toFixed(1)} zdravja/s`,
-    `Sunek: ${stats.dash ? 'da' : 'ne'} · bonus: ${stats.dashDmg.toFixed(1)}`, `Strup: ${stats.poison.toFixed(1)} · ogenj: ${stats.burn.toFixed(1)}`];
-  col1.forEach((line, i) => ui.fillText(line, 514, 182 + i * 15));
-  col2.forEach((line, i) => ui.fillText(line, 735, 182 + i * 15));
+  if (lin.length) {
+    ui.fillStyle = 'rgba(7,10,20,.96)'; ui.fillRect(12, 88, 244, 154);
+    ui.strokeStyle = '#59627a'; ui.lineWidth = 1; ui.strokeRect(12, 88, 244, 154);
+    ui.textAlign = 'left'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 12px monospace'; ui.fillText('RAZVOJNE VEJE', 24, 108);
+    ui.font = '11px monospace';
+    let lineageY = 128;
+    for (const item of lin) {
+      const lines = wrap(`${NICHES[item.niche].name}: ${item.text}`, 205).slice(0, 2);
+      lines.forEach((line, index) => {
+        ui.fillStyle = NICHES[item.niche].color; ui.fillText('●', 24, lineageY);
+        ui.fillStyle = '#e7ecfa'; ui.fillText(line, 38, lineageY);
+        lineageY += index === lines.length - 1 ? 17 : 14;
+      });
+      if (lineageY > 230) break;
+    }
+  }
+  ui.textAlign = 'left';
+  ui.fillStyle = 'rgba(7,10,20,.96)'; ui.fillRect(696, 88, 254, 154);
+  ui.strokeStyle = '#59627a'; ui.lineWidth = 1; ui.strokeRect(696, 88, 254, 154);
+  ui.fillStyle = '#ffd54f'; ui.font = 'bold 12px monospace'; ui.fillText('STATISTIKA STVORA', 708, 108);
+  ui.font = '11px monospace'; ui.fillStyle = '#f0f3ff';
+  const statLines = [
+    `Zdravje: ${player.hp.toFixed(1)} / ${stats.maxHp}`,
+    `Škoda: ${stats.dmg.toFixed(1)} · doseg: ${stats.reach}`,
+    `Hitrost: ${Math.round(stats.speed)} · skok: ${Math.round(stats.jump)}`,
+    `Napadi: ${(1 / stats.atkCd).toFixed(1)}/s · obnova: ${stats.regen.toFixed(1)}/s`,
+    `Zračni skoki: ${stats.airJumps} · bodice: ${stats.thorns}`,
+    `Sunek: ${stats.dash ? 'da' : 'ne'} · bonus: ${stats.dashDmg.toFixed(1)}`,
+    `Strup: ${stats.poison.toFixed(1)} · ogenj: ${stats.burn.toFixed(1)}`,
+  ];
+  statLines.forEach((line, index) => ui.fillText(line, 708, 128 + index * 15));
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
-    ui.fillStyle = hv ? '#252a40' : '#171b2c'; ui.fillRect(r.x, r.y, r.w, r.h);
+    ui.fillStyle = hv ? '#202638' : '#111522'; ui.fillRect(r.x, r.y, r.w, r.h);
     ui.strokeStyle = col; ui.lineWidth = hv ? 3 : 1.5; ui.strokeRect(r.x, r.y, r.w, r.h);
-    ui.fillStyle = t.syn ? synergyGradient(t, r.x, r.y, r.w, 26) : col; ui.fillRect(r.x, r.y, r.w, 26);
-    ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace';
+    ui.fillStyle = '#262d40'; ui.fillRect(r.x, r.y, r.w, 28);
+    ui.fillStyle = t.syn ? synergyGradient(t, r.x, r.y, 5, 28) : col; ui.fillRect(r.x, r.y, 5, 28);
+    ui.fillStyle = '#fff'; ui.font = 'bold 12px monospace';
     const generic = t.id.startsWith('g_');
     if (t.syn) {
       ui.beginPath(); ui.arc(r.x + 14, r.y + 13, 9, 0, Math.PI * 2); ui.fillStyle = synergyGradient(t, r.x + 5, r.y + 4, 18, 18); ui.fill();
       ui.fillStyle = '#fff'; ui.fillText('✦', r.x + 14, r.y + 17);
     }
-    ui.fillStyle = '#10121c';
+    ui.fillStyle = '#fff';
     const category = t.syn ? 'SINERGIJA' : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
       : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
-    ui.fillText(category, r.x + (t.syn ? 28 : 8), r.y + 17);
+    ui.fillText(category, r.x + (t.syn ? 28 : 12), r.y + 18);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
-    ui.fillStyle = '#fff'; ui.font = 'bold 19px monospace'; ui.fillText(t.name, r.x + 10, r.y + 52);
-    ui.font = '13px monospace'; ui.fillStyle = '#dde';
+    ui.fillStyle = '#fff'; ui.font = 'bold 20px monospace'; ui.fillText(t.name, r.x + 10, r.y + 55);
+    ui.font = '14px monospace'; ui.fillStyle = '#f0f3ff';
     if (t.syn) {
-      ui.fillStyle = synergyGradient(t, r.x, r.y, r.w, r.h); ui.font = 'bold 12px monospace';
-      wrap('Povezuje: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 72 + k * 15));
+      ui.fillStyle = '#9fd3ff'; ui.font = 'bold 13px monospace';
+      wrap('Povezuje: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 80 + k * 16));
       ui.fillStyle = '#fff'; ui.font = '13px monospace'; ui.fillText('Učinek:', r.x + 10, r.y + 108);
-      ui.fillStyle = '#dde'; wrap(t.desc, r.w - 20).slice(0, 3).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 124 + k * 16));
+      ui.fillStyle = '#e7ecfa'; wrap(t.desc, r.w - 20).slice(0, 3).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 126 + k * 16));
       return;
     }
-    let y = r.y + 74;
+    let y = r.y + 80;
     wrap(t.desc, r.w - 20).slice(0, 3).forEach(l => { ui.fillText(l, r.x + 10, y); y += 16; });
-    ui.font = '11px monospace';
+    ui.font = '12px monospace';
     y = Math.max(y + 4, r.y + 118);
     const hs = generic || t.boss ? [] : hintsSyn(t, owned);
     const opens = generic || t.boss ? [] : opensWhat(t), closes = generic ? [] : closesWhat(t, owned);
@@ -1549,6 +1657,7 @@ function frame(now) {
   }
   else if (mode === 'choose') updateChoose(rawDt); else updateMenu();
   for (const q of particles) { q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt; q.vy -= 20 * rawDt; q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt; }
+  updateBirds(rawDt, time);
   for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.t += rawDt; b.l.material.opacity = 1 - b.t / 0.22; if (b.t > 0.22) { scene.remove(b.l); b.l.geometry.dispose(); b.l.material.dispose(); bolts.splice(i, 1); } }
   for (const r of rings) { r.t += rawDt; const k = r.t / r.dur; r.m.scale.setScalar(0.2 + r.size * Math.min(1, k)); r.m.material.opacity = 0.9 * (1 - k); }
   rings.filter(r => r.t >= r.dur).forEach(r => { scene.remove(r.m); r.m.geometry.dispose(); r.m.material.dispose(); });
@@ -1565,7 +1674,7 @@ function frame(now) {
   }
   renderer.render(scene, camera);
   ui.clearRect(0, 0, W, H);
-  if (player && mode !== 'menu') { drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
+  if (player && mode !== 'menu') { if (mode !== 'choose') drawHUD(); if (mode === 'choose' && choice) drawChoose(); }
   if (mode === 'menu') drawMenu();
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
