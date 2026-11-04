@@ -32,7 +32,7 @@ evolutionLight.position.set(4, 8, 12);
 evolutionScene.add(evolutionLight);
 const evolutionRoot = new THREE.Group();
 evolutionScene.add(evolutionRoot);
-let evolutionNodes = [], evolutionLabels = [], evolutionBuildKey = '';
+let evolutionNodes = [], evolutionLabels = [], evolutionNicheNodes = [], evolutionBuildKey = '';
 const hemi = new THREE.HemisphereLight('#c8d4ff', '#4a3a5a', 0.6);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight('#fff0d8', 0.8);
@@ -613,6 +613,7 @@ function addSecretCave() {
 
 // ---------- Delci in obrazi ----------
 let particles = [];
+const fireVortices = [];
 const partMats = {};
 function burst(x, y, color, n = 8) {
   if (!partMats[color]) partMats[color] = new THREE.MeshBasicMaterial({ color });
@@ -685,7 +686,7 @@ try { localStorage.removeItem('evo-save-v1'); } catch (e) { /* rekord ostane ohr
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
     jumps: 0, atkT: 0, atkCd: 0, spitCd: 0, dashT: 0, dashCd: 0, inv: 0, hurtT: 0, shield: stats.shield,
-    atkHit: new Set(), dashHit: new Set(), phase: 0, jumpAnim: 0, acd: {}, haste: 0, curl: 0, meteor: false, meteorUp: 0, breathT: 0 };
+    atkHit: new Set(), dashHit: new Set(), breathHits: new Set(), phase: 0, jumpAnim: 0, acd: {}, haste: 0, curl: 0, meteor: false, meteorUp: 0, breathT: 0 };
 }
 let saveNotice = '';
 function savedGameExists() {
@@ -763,6 +764,7 @@ function loadSavedGame() {
     player = Object.assign(newPlayer(), savedPlayer, {
       atkHit: new Set((data.player.atkHit || []).map(i => enemies[i]).filter(Boolean)),
       dashHit: new Set((data.player.dashHit || []).map(i => enemies[i]).filter(Boolean)),
+      breathHits: new Set(),
     });
     shots = Array.isArray(data.shots) ? data.shots : [];
     pshots = Array.isArray(data.pshots) ? data.pshots : [];
@@ -800,6 +802,8 @@ function clearObjects() {
   enemies = [];
   for (const b of shots.concat(pshots)) removeObj(b);
   shots = []; pshots = [];
+  for (const vortex of fireVortices) { scene.remove(vortex.group); disposeObj(vortex.group); }
+  fireVortices.length = 0;
 }
 function removeRig(e) { if (e.rig) { scene.remove(e.rig.root); disposeObj(e.rig.root); e.rig = null; } }
 function removeObj(b) { if (b.obj) { scene.remove(b.obj); disposeObj(b.obj); b.obj = null; } }
@@ -916,10 +920,25 @@ function flames(x, y, dir, n) {
     if (q) { q.vx = dir * rand(3, 9); q.vy = rand(-0.5, 1.5); q.life = rand(0.25, 0.5); }
   }
 }
+function fireBreathParticles(x, y, dir, n) {
+  for (let i = 0; i < n && particles.length < 350; i++) {
+    const color = ['#ff8a2a', '#ffd23a', '#ff4a1a'][i % 3];
+    if (!partMats[color]) partMats[color] = new THREE.MeshBasicMaterial({ color });
+    const m = new THREE.Mesh(GEO.sph, partMats[color]);
+    m.scale.setScalar(rand(0.09, 0.18));
+    m.position.set(wx(x), wy(y), rand(0.15, 0.45));
+    scene.add(m);
+    const speed = rand(24, 30), angle = rand(-Math.PI / 24, Math.PI / 24);
+    particles.push({
+      m, vx: dir * Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+      life: rand(0.55, 0.7), gravityDelay: rand(0.28, 0.38),
+    });
+  }
+}
 function useActive(id, slot) {
   const p = player, s = stats, a = TRAIT_BY_ID[id].active, cx = p.x + p.w / 2, cy = p.y + p.h / 2;
   p.acd[id] = a.cd * s.cdMult;
-  const sfx = { torrent: 'water', blizzard: 'frost', snare: 'grow', bloomburst: 'grow', bolt: 'zap' }[id];
+  const sfx = { torrent: 'water', blizzard: 'frost', snare: 'grow', bloomburst: 'grow', bolt: 'zap', firevortex: 'breath' }[id];
   Snd.play(sfx || (id === 'roar' || id === 'gale' || id === 'curl' || id === 'quills' || id === 'miasma' || id === 'epidemic' || id === 'breath' ? id : 'dash'));
   if (id === 'roar') {
     ring(cx, cy, a.color, 260); shake = 10; hitstop = 0.05;
@@ -957,10 +976,61 @@ function useActive(id, slot) {
     shake = 4; ring(cx, cy, a.color, 80, 0.25);
     for (const e of tg) { zap(e.x + e.w / 2, -200, e.x + e.w / 2, e.y + e.h / 2); e.hp -= 2 + s.dmg * 0.5 + (s.arcDmg - 1); e.flash = 0.12; e.stunT = Math.max(e.stunT, 0.8); if (s.arc) chain(e, 1, s.arcDmg); }
   } else if (id === 'breath') {
-    p.breathT = 0.35; shake = 3;
+    p.breathT = 0.55; p.breathHits = new Set(); shake = 3;
+  } else if (id === 'firevortex') {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.ConeGeometry(0.72, 1.5, 16, 1, true),
+      new THREE.MeshBasicMaterial({ color: '#ff5a22', transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    body.position.z = 0;
+    group.add(body);
+    for (let i = 0; i < 4; i++) {
+      const ringMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(0.3 + i * 0.11, 0.055, 7, 28),
+        new THREE.MeshBasicMaterial({
+          color: i % 2 ? '#ffd23a' : '#ff7028', transparent: true, opacity: 0.85,
+          side: THREE.DoubleSide, depthWrite: false,
+        }),
+      );
+      ringMesh.position.y = -0.42 + i * 0.28;
+      ringMesh.rotation.x = 0.25 + i * 0.18;
+      ringMesh.userData.spin = i % 2 ? -1 : 1;
+      group.add(ringMesh);
+    }
+    scene.add(group);
+    fireVortices.push({ group, age: 0, hitAt: new Map() });
+    shake = 4;
+    burst(cx + p.face * 90, cy, '#ff762b', 18);
+  }
+}
+function updateFireVortices(dt) {
+  for (let i = fireVortices.length - 1; i >= 0; i--) {
+    const vortex = fireVortices[i];
+    vortex.age += dt;
+    if (vortex.age >= 5) {
+      scene.remove(vortex.group); disposeObj(vortex.group); fireVortices.splice(i, 1);
+      continue;
+    }
+    const cx = player.x + player.w / 2 + player.face * 95;
+    const cy = player.y + player.h / 2;
+    vortex.group.position.set(wx(cx), wy(cy), 0.35);
+    vortex.group.rotation.y = player.face < 0 ? Math.PI : 0;
+    vortex.group.children.forEach((mesh, index) => {
+      if (index > 0) mesh.rotation.z += dt * mesh.userData.spin * (2.2 + index * 0.35);
+      if (mesh.material.transparent) mesh.material.opacity = (index === 0 ? 0.2 : 0.58) + 0.2 * Math.sin(vortex.age * 11 + index);
+    });
     for (const e of enemies) {
-      const dx = (e.x + e.w / 2 - cx) * p.face;
-      if (dx > -10 && dx < 250 && Math.abs(e.y + e.h / 2 - cy) < 80) { ignite(e); e.burnT = Math.max(e.burnT, 3); e.burnDps = Math.max(e.burnDps, 1.5); e.hp -= 1.5 + s.dmg * 0.5; e.flash = 0.1; e.vx = p.face * 120; e.kb = 0.15; }
+      const dx = (e.x + e.w / 2 - cx) * player.face;
+      const dy = e.y + e.h / 2 - cy;
+      if (dx < -35 || dx > 125 || Math.abs(dy) > 115 || e.hp <= 0) continue;
+      const lastHit = vortex.hitAt.get(e);
+      if (lastHit !== undefined && vortex.age - lastHit < 0.35) continue;
+      vortex.hitAt.set(e, vortex.age);
+      e.hp -= 0.35 + stats.dmg * 0.15;
+      e.flash = 0.1;
+      e.vx = player.face * 70;
+      ignite(e);
     }
   }
 }
@@ -1065,7 +1135,7 @@ function updatePlay(dt) {
       if (id === 'breath') p.acd[id] = s.breathCd;
     }
   });
-  if (p.breathT > 0) flames(p.x + 14 + p.face * 18, p.y + 16, p.face, 4);
+  if (p.breathT > 0) fireBreathParticles(p.x + p.w / 2 + p.face * 18, p.y + p.h / 2, p.face, 4);
   if (p.meteor) { p.vx *= 0.9; p.vy = p.meteorUp > 0 ? -460 : 1300; p.meteorUp -= dt; if (Math.random() < 0.7) burst(p.x + 14, p.y + 10, '#ffb347', 1); }
   else if (p.dashT > 0) { p.vx = p.face * 620; p.vy = 0; }
   else {
@@ -1097,6 +1167,20 @@ function updatePlay(dt) {
     for (const e of enemies) if (Math.abs(e.x + e.w / 2 - p.x - 14) < 100 && Math.abs(e.y + e.h - p.y - p.h) < 50) { e.hp -= 2 + s.dmg; e.flash = 0.1; e.kb = 0.25; e.vy = -300; poison(e); }
   }
   if (p.y > H + 100) { hurtPlayer({ x: p.x }, 1); Object.assign(p, { x: 80, y: 300, vy: 0 }); }
+
+  updateFireVortices(dt);
+  if (p.breathT > 0) {
+    if (!(p.breathHits instanceof Set)) p.breathHits = new Set();
+    const mouthX = p.x + p.w / 2 + p.face * 18, mouthY = p.y + p.h / 2;
+    for (const e of enemies) {
+      if (p.breathHits.has(e)) continue;
+      const dx = (e.x + e.w / 2 - mouthX) * p.face, dy = e.y + e.h / 2 - mouthY;
+      if (dx <= 0 || Math.hypot(dx, dy) > 500 || Math.abs(Math.atan2(dy, dx)) > Math.PI / 24) continue;
+      p.breathHits.add(e);
+      ignite(e); e.burnT = Math.max(e.burnT, 3); e.burnDps = Math.max(e.burnDps, 1.5);
+      e.hp -= 1.5 + s.dmg * 0.5; e.flash = 0.1; e.vx = p.face * 120; e.kb = 0.15;
+    }
+  }
 
   const box = s.spin ? { x: p.x - s.reach, y: p.y + 2, w: p.w + s.reach * 2, h: p.h - 4 }
     : { x: p.face > 0 ? p.x + p.w : p.x - s.reach, y: p.y + 2, w: s.reach, h: p.h - 4 };
@@ -1337,7 +1421,7 @@ function drawMenu() {
   }
   ui.fillStyle = '#aab'; ui.font = '13px monospace';
   ui.fillText('1/2/3: težavnost · A/D ali puščice: premik · preslednica: skok · J/levi klik: napad', W / 2, 504);
-  ui.fillText('K/Shift/desni klik: sunek · L: izstrelek · E/Q/R: sposobnosti · F: skriti brlog · P: premor · M: zvok', W / 2, 525);
+  ui.fillText('K/Shift/desni klik: sunek · L: izstrelek · E/Q/R/V: sposobnosti · F: skriti brlog · P: premor · M: zvok', W / 2, 525);
 }
 function drawPause() {
   ui.fillStyle = 'rgba(6,8,18,.88)'; ui.fillRect(0, 0, W, H);
@@ -1415,6 +1499,7 @@ function disposeEvolutionTree() {
   evolutionRoot.clear();
   evolutionNodes = [];
   evolutionLabels = [];
+  evolutionNicheNodes = [];
 }
 function buildEvolutionTree() {
   const key = `${[...owned].sort().join(',')}|${pathNiches(evolutionPath).join(',')}|${evolutionPath.founderPicks}`;
@@ -1425,6 +1510,40 @@ function buildEvolutionTree() {
     color: '#ffd54f', emissive: '#6f4a08', emissiveIntensity: 0.8, roughness: 0.32, metalness: 0.25,
   }));
   evolutionRoot.add(center);
+  const selectedNiches = pathNiches(evolutionPath), hubPositions = new Map(), nicheLocked = new Map();
+  for (const niche of Object.keys(EVOLUTION_DIRECTIONS)) {
+    if (!NICHES[niche]) continue;
+    const direction = new THREE.Vector3(...EVOLUTION_DIRECTIONS[niche]).normalize();
+    const position = direction.clone().multiplyScalar(2.35);
+    hubPositions.set(niche, position);
+    const locked = niche !== 'boss' && !selectedNiches.includes(niche)
+      && (evolutionPath.founderPicks >= 3 || selectedNiches.length >= 3
+        || selectedNiches.some(existing => nichesConflict(existing, niche))
+        || (evolutionPath.founderPicks < 2 && ['fire', 'venom'].includes(niche)));
+    nicheLocked.set(niche, locked);
+    const color = selectedNiches.includes(niche) ? '#9be15d' : locked ? '#465064' : NICHES[niche].color;
+    const linkMaterial = new THREE.LineBasicMaterial({ color, transparent: true, opacity: locked ? 0.18 : selectedNiches.includes(niche) ? 0.78 : 0.42 });
+    evolutionRoot.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), position]), linkMaterial,
+    ));
+    const endpoint = direction.multiplyScalar(15);
+    evolutionRoot.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([position, endpoint]),
+      new THREE.LineBasicMaterial({ color: NICHES[niche].color, transparent: true, opacity: 0.15 }),
+    ));
+    const node = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.58, 0),
+      new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: selectedNiches.includes(niche) ? 0.48 : 0.12,
+        roughness: 0.35, metalness: 0.2, transparent: locked, opacity: locked ? 0.52 : 1,
+      }),
+    );
+    node.position.copy(position);
+    node.userData.niche = niche;
+    evolutionRoot.add(node);
+    evolutionNicheNodes.push({ niche, node });
+    evolutionLabels.push({ niche, position: endpoint.clone().multiplyScalar(1.06) });
+  }
   const traits = TRAITS.filter(trait => !trait.secret || owned.has(trait.id));
   const tiers = new Map();
   for (const trait of traits) {
@@ -1436,25 +1555,17 @@ function buildEvolutionTree() {
   for (const siblings of tiers.values()) {
     siblings.forEach((trait, index) => positions.set(trait.id, evolutionPosition(trait, index, siblings.length)));
   }
-  for (const niche of Object.keys(EVOLUTION_DIRECTIONS)) {
-    if (!NICHES[niche]) continue;
-    const direction = new THREE.Vector3(...EVOLUTION_DIRECTIONS[niche]).normalize();
-    const endpoint = direction.clone().multiplyScalar(15);
-    const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), endpoint]);
-    const material = new THREE.LineBasicMaterial({ color: NICHES[niche].color, transparent: true, opacity: 0.32 });
-    evolutionRoot.add(new THREE.Line(geometry, material));
-    evolutionLabels.push({ niche, position: direction.multiplyScalar(16) });
-  }
   for (const trait of traits) {
     const position = positions.get(trait.id);
     if (!position) continue;
     const requirements = traitRequires(trait);
-    const parents = requirements.length ? requirements : [null];
+    const parents = requirements.length ? requirements : [`niche:${trait.niche}`];
     for (const parentId of parents) {
-      const from = parentId ? positions.get(parentId) : new THREE.Vector3();
+      const nicheParent = parentId.startsWith('niche:');
+      const from = nicheParent ? hubPositions.get(parentId.slice(6)) : positions.get(parentId);
       if (!from) continue;
-      const active = owned.has(trait.id) && (!parentId || owned.has(parentId));
-      const availableParent = !parentId || owned.has(parentId);
+      const active = owned.has(trait.id) && (nicheParent || owned.has(parentId));
+      const availableParent = nicheParent ? !nicheLocked.get(parentId.slice(6)) : owned.has(parentId);
       const lineGeometry = new THREE.BufferGeometry().setFromPoints([from, position]);
       const lineMaterial = new THREE.LineBasicMaterial({
         color: active ? '#9be15d' : availableParent ? NICHES[trait.niche].color : '#596277',
@@ -1500,7 +1611,7 @@ function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.34)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('3D RAZVOJNO DREVO', W / 2, 39);
   ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Povleci za obračanje · kolešček za povečavo · izbrane niše so razporejene v različnih prostorskih smereh.', W / 2, 62);
+  ui.fillText('Povleci za obračanje · kolešček za povečavo · vozlišče niše povezuje sredino z njenimi prilagoditvami.', W / 2, 62);
   treeNodeBoxes = [];
   for (const { trait, node } of evolutionNodes) {
     const p = projectEvolutionPosition(node.position);
@@ -1608,11 +1719,42 @@ function endRoom(boss) {
   nextChoice();
 }
 let picksTotal = 2, picksDone = 0;
+const NICHE_INTENTS = {
+  predator: 'Napadalna zgradba in plenilski telesni načrt.',
+  swift: 'Gibčnost, hitrost in lahkotnejši telesni načrt.',
+  bulwark: 'Vzdržljivost, oklep in čvrstejše telo.',
+  venom: 'Strupena specializacija in črvast telesni načrt.',
+  fire: 'Ognjena specializacija in luskast telesni načrt.',
+  water: 'Vodni življenjski slog in mehkužčast telesni načrt.',
+  land: 'Rastlinska simbioza in kolobarnikovo telo.',
+  air: 'Zračni življenjski slog in pernati telesni načrt.',
+};
+function selectNiche(niche) {
+  if (!pathNiches(evolutionPath).includes(niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(niche);
+  const options = offersForNiche(owned, niche, 3, evolutionPath);
+  if (!options.length) { nextChoice(); return; }
+  choice = { kind: 'evo', stage: 'trait', niche, options, hover: -1, rerolls: 0 };
+  choiceCool = 0.3;
+  choiceModelRotation = 0;
+}
+function rerollChoice() {
+  if (mode !== 'choose' || !choice || choice.kind !== 'evo' || choice.stage !== 'trait') return;
+  choice.options = offersForNiche(owned, choice.niche, 3, evolutionPath, choice.options.map(option => option.id));
+  choice.hover = -1;
+  choice.rerolls++;
+}
 function nextChoice() {
   while (queue.length) {
     const k = queue.shift();
-    const opts = k === 'boss' ? bossOffers(owned) : k === 'secret' ? secretOffers(owned, evolutionPath) : offers(owned, 3, evolutionPath);
-    if (opts.length) { choice = { kind: k, options: opts, hover: -1 }; choiceCool = 0.4; choiceModelRotation = 0; return; }
+    const opts = k === 'boss' ? bossOffers(owned) : k === 'secret' ? secretOffers(owned, evolutionPath)
+      : nicheOffers(owned, evolutionPath, 3).map(niche => ({
+        id: 'niche_' + niche, niche, name: NICHES[niche].name, nicheChoice: true,
+        previewId: (nicheTraitPool(owned, niche, evolutionPath)[0] || {}).id,
+      }));
+    if (opts.length) {
+      choice = { kind: k === 'evo' ? 'evo' : k, stage: k === 'evo' ? 'niche' : 'trait', options: opts, hover: -1 };
+      choiceCool = 0.4; choiceModelRotation = 0; return;
+    }
   }
   choice = null;
   startRoom();
@@ -1622,6 +1764,8 @@ function pick(opt) {
   if (opt.id.startsWith('g_')) extras[opt.id]++; else owned.add(opt.id);
   if (!opt.id.startsWith('g_') && !opt.boss && !opt.secret && !opt.syn) {
     if (!pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(opt.niche);
+    evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
+  } else if (opt.id.startsWith('g_') && !opt.boss && !opt.secret && !opt.syn) {
     evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
   } else if (opt.secret && !pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) {
     evolutionPath.niches.push(opt.niche);
@@ -1650,7 +1794,11 @@ function advanceSynergyCard() {
   mode = 'choose';
   nextChoice();
 }
-function cardRect(i) { return { x: 30 + i * 305, y: i === choice.hover ? 342 : 350, w: 290, h: 178 }; }
+function cardRect(i) {
+  const count = choice.options.length, start = (W - (count * 290 + (count - 1) * 15)) / 2;
+  return { x: start + i * 305, y: i === choice.hover ? 342 : 350, w: 290, h: 178 };
+}
+function rerollRect() { return { x: 390, y: 264, w: 180, h: 34 }; }
 function hoverIndex() {
   if (!choice) return -1;
   for (let i = 0; i < choice.options.length; i++) { const r = cardRect(i); if (mouse.x > r.x && mouse.x < r.x + r.w && mouse.y > r.y && mouse.y < r.y + r.h) return i; }
@@ -1741,8 +1889,17 @@ uic.addEventListener('click', e => {
   }
   if (mode === 'synergy') { advanceSynergyCard(); return; }
   if (mode !== 'choose' || !choice || choiceCool > 0) return;
+  const reroll = rerollRect();
+  if (choice.kind === 'evo' && choice.stage === 'trait'
+    && mouse.x >= reroll.x && mouse.x <= reroll.x + reroll.w && mouse.y >= reroll.y && mouse.y <= reroll.y + reroll.h) {
+    rerollChoice(); return;
+  }
   const i = hoverIndex();
-  if (i >= 0) pick(choice.options[i]);
+  if (i >= 0) {
+    const option = choice.options[i];
+    if (choice.stage === 'niche') selectNiche(option.niche);
+    else pick(option);
+  }
 });
 
 function updateChoose(dt) {
@@ -1750,18 +1907,23 @@ function updateChoose(dt) {
   if (!choice) return;
   choice.hover = hoverIndex();
   if (choiceCool > 0) return;
-  for (let i = 0; i < choice.options.length; i++) if (hit('Digit' + (i + 1), 'Numpad' + (i + 1))) { pick(choice.options[i]); return; }
+  if (choice.kind === 'evo' && choice.stage === 'trait' && hit('KeyR')) { rerollChoice(); return; }
+  for (let i = 0; i < choice.options.length; i++) if (hit('Digit' + (i + 1), 'Numpad' + (i + 1))) {
+    if (choice.stage === 'niche') selectNiche(choice.options[i].niche);
+    else pick(choice.options[i]);
+    return;
+  }
 }
 
 // ---------- 3D sinhronizacija ----------
 const pRoot = new THREE.Group(); scene.add(pRoot);
 let pRig = null, pKey = '';
-function setPlayerModel(set) {
-  const key = [...set].sort().join(',') + '|' + (set === owned ? '' : 'p');
+function setPlayerModel(set, path = evolutionPath) {
+  const key = [...set].sort().join(',') + '|' + pathNiches(path).join(',') + '|' + (set === owned ? '' : 'p');
   if (pRig && key === pKey) return;
   pKey = key;
   if (pRig) { pRoot.remove(pRig.root); disposeObj(pRig.root); }
-  pRig = buildCreature(set);
+  pRig = buildCreature(set, path);
   pRig.baseScale = pRig.model.scale.x * Math.max(1, ...[...set].map(id => (TRAIT_BY_ID[id] && TRAIT_BY_ID[id].scale) || 1));
   pRoot.add(pRig.root);
 }
@@ -1961,7 +2123,8 @@ function drawChoose() {
   ui.fillStyle = boss ? '#ffd54f' : secret ? '#d9a7ff' : '#fff';
   const title = boss ? 'NAGRADA ZA PORAZ ŠEFA – izberi eno'
     : secret ? 'STARODAVNA PRILAGODITEV – izberi eno'
-      : `Stopnja ${room} je končana – izbira izboljšave (${picksDone + 1}/${picksTotal})`;
+      : choice.stage === 'niche' ? `Stopnja ${room} je končana – najprej izberi nišo (${picksDone + 1}/${picksTotal})`
+        : `Stopnja ${room} je končana – izbira prilagoditve (${picksDone + 1}/${picksTotal})`;
   ui.fillText(title, W / 2, 44);
   ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
   const selectedNiches = pathNiches(evolutionPath);
@@ -1970,7 +2133,8 @@ function drawChoose() {
       : `Specializacija: ${selectedNiches.map(niche => NICHES[niche].name).join(' + ')}; druge niše so zaklenjene.`;
   ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.'
     : secret ? 'Starodavne prilagoditve so edinstvene in na voljo samo v skritih brlogih.'
-      : `${foundationHint} · obračanje: povleci · izbira: miška ali 1–3.`, W / 2, 68);
+      : choice.stage === 'niche' ? `${foundationHint} · izberi smer; nato izbereš prilagoditev znotraj nje.`
+        : `${NICHES[choice.niche].name}: izberi prilagoditev · ${foundationHint} · miška ali 1–3.`, W / 2, 68);
   const lin = lineage(owned);
   if (lin.length) {
     ui.fillStyle = 'rgba(7,10,20,.96)'; ui.fillRect(12, 88, 244, 154);
@@ -2004,6 +2168,13 @@ function drawChoose() {
     `Zmanjšanje škode: ${Math.round(stats.damageReduction * 100)} % · sunek: 30 %${stats.curl ? ' · klubko: 65 %' : ''}`,
   ];
   statLines.forEach((line, index) => ui.fillText(line, 708, 126 + index * 14));
+  if (choice.kind === 'evo' && choice.stage === 'trait') {
+    const r = rerollRect();
+    ui.fillStyle = '#171b2c'; ui.fillRect(r.x, r.y, r.w, r.h);
+    ui.strokeStyle = NICHES[choice.niche].color; ui.lineWidth = 2; ui.strokeRect(r.x, r.y, r.w, r.h);
+    ui.fillStyle = '#fff'; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
+    ui.fillText(`ZAMENJAJ PONUDBO · ∞  [R]`, r.x + r.w / 2, r.y + 22);
+  }
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
     ui.fillStyle = hv ? '#202638' : '#111522'; ui.fillRect(r.x, r.y, r.w, r.h);
@@ -2018,12 +2189,21 @@ function drawChoose() {
     }
     ui.fillStyle = '#fff';
     const category = t.syn ? 'SINERGIJA' : t.secret ? 'STARODAVNA · SKRITA'
-      : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
-        : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
+      : t.nicheChoice ? 'IZBIRA NIŠE · TELESNI NAČRT'
+        : generic ? `${NICHES[t.niche].name.toUpperCase()} · SPLOŠNA`
+          : `${NICHES[t.niche].name.toUpperCase()} · ${DIMENSIONS[t.dimension].short.toUpperCase()} · ${t.boss ? 'ŠEFOVSKA' : 'RAVEN ' + traitTier(t)}`;
     ui.fillText(category, r.x + (t.syn ? 28 : 12), r.y + 18);
     ui.textAlign = 'right'; ui.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + 17); ui.textAlign = 'left';
-    ui.fillStyle = '#fff'; ui.font = 'bold 20px monospace'; ui.fillText(t.name, r.x + 10, r.y + 55);
+    ui.fillStyle = '#fff'; ui.font = 'bold 20px monospace'; ui.fillText(t.nicheChoice ? NICHES[t.niche].name : t.name, r.x + 10, r.y + 55);
     ui.font = '14px monospace'; ui.fillStyle = '#f0f3ff';
+    if (t.nicheChoice) {
+      const plan = BODY_PLANS[NICHE_BODY_PLANS[t.niche]];
+      ui.fillStyle = '#f0f3ff'; ui.font = '14px monospace';
+      wrap(NICHE_INTENTS[t.niche], r.w - 20).slice(0, 3).forEach((line, index) => ui.fillText(line, r.x + 10, r.y + 84 + index * 19));
+      ui.fillStyle = '#9fd3ff'; ui.font = '12px monospace';
+      ui.fillText(`Telesni načrt: ${plan ? plan.name : 'posebna zgradba'}`, r.x + 10, r.y + 145);
+      return;
+    }
     if (t.syn) {
       ui.fillStyle = '#9fd3ff'; ui.font = 'bold 13px monospace';
       wrap('Povezuje: ' + synSources(t).join(' + '), r.w - 20).slice(0, 2).forEach((l, k) => ui.fillText(l, r.x + 10, r.y + 80 + k * 16));
@@ -2060,7 +2240,11 @@ function frame(now) {
     else updatePlay(dt);
   }
   else if (mode === 'choose') updateChoose(rawDt); else updateMenu();
-  for (const q of particles) { q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt; q.vy -= 20 * rawDt; q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt; }
+  for (const q of particles) {
+    q.m.position.x += q.vx * rawDt; q.m.position.y += q.vy * rawDt;
+    if (q.gravityDelay > 0) q.gravityDelay -= rawDt; else q.vy -= 20 * rawDt;
+    q.life -= rawDt; q.m.rotation.x += 6 * rawDt; q.m.rotation.y += 5 * rawDt;
+  }
   updateBirds(rawDt, time);
   for (let i = bolts.length - 1; i >= 0; i--) { const b = bolts[i]; b.t += rawDt; b.l.material.opacity = 1 - b.t / 0.22; if (b.t > 0.22) { scene.remove(b.l); b.l.geometry.dispose(); b.l.material.dispose(); bolts.splice(i, 1); } }
   for (const r of rings) { r.t += rawDt; const k = r.t / r.dur; r.m.scale.setScalar(0.2 + r.size * Math.min(1, k)); r.m.material.opacity = 0.9 * (1 - k); }
@@ -2072,7 +2256,11 @@ function frame(now) {
   if (player) {
     if (mode === 'choose' && choice) {
       const h = choice.hover >= 0 ? choice.options[choice.hover] : null;
-      setPlayerModel(h && !h.id.startsWith('g_') ? new Set([...owned, h.id]) : owned);
+      const previewId = h && (h.previewId || (h.nicheChoice ? null : h.id));
+      const previewSet = previewId && !previewId.startsWith('g_') ? new Set([...owned, previewId]) : owned;
+      const previewPath = h && h.nicheChoice && !pathNiches(evolutionPath).includes(h.niche)
+        ? { ...evolutionPath, niches: [...pathNiches(evolutionPath), h.niche].slice(0, 3) } : evolutionPath;
+      setPlayerModel(previewSet, previewPath);
     } else setPlayerModel(owned);
     animatePlayer(rawDt, time); animateEnemies(rawDt, time); updateCamera(rawDt, time);
   }
@@ -2088,8 +2276,11 @@ function frame(now) {
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
   else if (mode === 'synergy') drawSynergyCard();
+  const reroll = mode === 'choose' && choice && choice.kind === 'evo' && choice.stage === 'trait' && (() => {
+    const r = rerollRect(); return mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
+  })();
   uic.style.cursor = mode === 'tree' ? (treeDrag ? 'grabbing' : 'grab')
-    : mode === 'choose' ? (choiceDrag ? 'grabbing' : choice && choice.hover >= 0 ? 'pointer' : 'grab')
+    : mode === 'choose' ? (choiceDrag ? 'grabbing' : reroll || choice && choice.hover >= 0 ? 'pointer' : 'grab')
       : mode === 'play' ? 'crosshair' : 'default';
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);

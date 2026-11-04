@@ -37,7 +37,7 @@ function limb(parent, mat, len, rad) { return mk(parent, GEO.taper, mat, [0, -le
 function stdMat(c, o) { return new THREE.MeshStandardMaterial(Object.assign({ color: c, flatShading: true, roughness: 0.7, metalness: 0.05 }, o || {})); }
 function glowMat(c, i) { return new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i === undefined ? 1 : i, flatShading: true }); }
 
-function creatureColors(owned) {
+function creatureColors(owned, path = null) {
   const inv = nicheInvest(owned);
   // končne veje (brez naslednikov) barvo niše izrazito poudarijo
   for (const t of TRAITS) if (owned.has(t.id) && inv[t.niche] !== undefined && !TRAITS.some(x => x.parent === t.id)) inv[t.niche] += 4 + traitTier(t) * 2;
@@ -50,8 +50,10 @@ function creatureColors(owned) {
     const c = new THREE.Color(NICHES[n].color);
     r += c.r * w; g += c.g * w; b += c.b * w; tot += w;
   }
+  dom = dominantNiche(owned, path) || pathNiches(path)[0] || dom;
   const body = new THREE.Color('#8fdc8a');
   if (tot) body.lerp(new THREE.Color(r / tot, g / tot, b / tot), Math.min(0.95, 0.35 + 0.1 * sum));
+  else if (dom) body.lerp(new THREE.Color(NICHES[dom].color), 0.28);
   const accent = new THREE.Color(dom ? NICHES[dom].color : '#ffe08a');
   return {
     body, accent, dom,
@@ -88,9 +90,9 @@ function wingShape(size, mat, boneMat) {
 }
 
 // Zgradi lik iz množice izbranih lastnosti. Stopala so v y=0, lik gleda proti +X.
-function buildCreature(owned) {
+function buildCreature(owned, path = null) {
   const has = id => owned.has(id);
-  const col = creatureColors(owned);
+  const col = creatureColors(owned, path);
   const mats = [];
   const M = (c, o) => { const m = stdMat(c, o); mats.push(m); return m; };
   const bodyM = M(col.body, { flatShading: false, roughness: 0.52 }), bellyM = M(col.belly, { flatShading: false, roughness: 0.52 });
@@ -108,7 +110,7 @@ function buildCreature(owned) {
   // The shared body is a limbless, tapered worm; niches add features gradually.
   const nTraits = [...owned].filter(id => TRAIT_BY_ID[id] && !TRAIT_BY_ID[id].boss).length;
   const invest = nicheInvest(owned);
-  const primaryNiche = dominantNiche(owned);
+  const primaryNiche = dominantNiche(owned, path) || pathNiches(path)[0];
   const bodyPlan = NICHE_BODY_PLANS[primaryNiche];
   const bodyPlans = new Set(bodyPlan ? [bodyPlan] : []);
   const bodyPlanGrowth = primaryNiche ? Math.min(1, invest[primaryNiche] / 8) : 0;
