@@ -19,14 +19,17 @@ const NICHES = {
   boss: { name: 'Tiran', color: '#ffd54f' },
 };
 const BODY_PLANS = {
-  arthropod: { name: 'členonožec', niche: 'predator' },
-  mollusk: { name: 'mehkužec', niche: 'water' },
-  chordate: { name: 'strunar', niche: 'swift' },
-  echinoderm: { name: 'iglokožec', niche: 'bulwark' },
-  annelid: { name: 'kolobarnik', niche: 'land' },
-  flatworm: { name: 'ploščati črv', niche: 'land' },
-  nematode: { name: 'valjasti črv', niche: 'venom' },
+  arthropod: { name: 'členonoško telo', niche: 'predator' },
+  mollusk: { name: 'mehkužčasto telo', niche: 'water' },
+  chordate: { name: 'strunarsko telo', niche: 'swift' },
+  echinoderm: { name: 'iglokožčasto telo', niche: 'bulwark' },
+  annelid: { name: 'kolobarniksko telo', niche: 'land' },
+  flatworm: { name: 'ploščato črvasto telo', niche: 'land' },
+  nematode: { name: 'valjasto črvasto telo', niche: 'venom' },
+  avian: { name: 'pernato telo', niche: 'air' },
+  drake: { name: 'luskasto telo', niche: 'fire' },
 };
+const NICHE_BODY_PLANS = Object.fromEntries(Object.entries(BODY_PLANS).map(([id, plan]) => [plan.niche, id]));
 const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR'];
 const ACTIVE_KEY_LABELS = ['E', 'Q', 'R'];
 const TRAITS = [];
@@ -260,6 +263,20 @@ function nicheInvest(owned) {
   for (const t of TRAITS) if (owned.has(t.id) && c[t.niche] !== undefined) c[t.niche] += traitTier(t);
   return c;
 }
+function dominantNiche(owned, path = null) {
+  const invest = nicheInvest(owned);
+  const selected = pathNiches(path);
+  const roots = [...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && !t.boss && !t.secret);
+  const tieOrder = [...selected, ...roots.map(t => t.niche)];
+  let best = null, score = 0, order = -1;
+  for (const niche of Object.keys(invest)) {
+    const rank = tieOrder.lastIndexOf(niche);
+    if (invest[niche] > score || (invest[niche] === score && invest[niche] > 0 && rank > order)) {
+      best = niche; score = invest[niche]; order = rank;
+    }
+  }
+  return best;
+}
 function dimensionInvest(owned) {
   const c = Object.fromEntries(Object.keys(DIMENSIONS).map(key => [key, 0]));
   for (const t of TRAITS) if (owned.has(t.id)) c[t.dimension]++;
@@ -341,9 +358,9 @@ function creatureIdentity(owned, path = null) {
   const ranked = Object.entries(nicheInvest(owned)).filter(([, score]) => score > 0).sort((a, b) => b[1] - a[1]);
   if (!ranked.length) return 'Sluz';
   const selected = pathNiches(path);
-  const primary = selected[0] || ranked[0][0];
-  const secondary = selected[1] || (ranked.find(([niche]) => niche !== primary) || [null])[0];
-  const tertiary = selected[2];
+  const primary = dominantNiche(owned, path) || ranked[0][0];
+  const secondary = ranked.find(([niche]) => niche !== primary)?.[0] || selected.find(niche => niche !== primary);
+  const tertiary = selected.find(niche => niche !== primary && niche !== secondary);
   const identities = {
     'land:air': 'Rastlinski letalec', 'air:land': 'Zračni vrtnar',
     'predator:air': 'Krilati plenilec', 'air:predator': 'Zračni lovec',
@@ -359,8 +376,8 @@ function creatureIdentity(owned, path = null) {
   };
   const base = secondary && identities[`${primary}:${secondary}`] || singleIdentity(primary);
   const identity = tertiary ? `${base} · ${NICHES[tertiary].name}` : base;
-  const bodyPlanNames = [...new Set([...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && t.bodyPlan).map(t => BODY_PLANS[t.bodyPlan].name))];
-  return bodyPlanNames.length ? `${identity} · debla: ${bodyPlanNames.join(' / ')}` : identity;
+  const bodyPlan = NICHE_BODY_PLANS[primary];
+  return bodyPlan ? `${identity} · ${BODY_PLANS[bodyPlan].name}` : identity;
 }
 function singleIdentity(primary) {
   const single = {
