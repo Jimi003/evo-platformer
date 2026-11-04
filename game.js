@@ -233,33 +233,58 @@ function buildRoomScene() {
   const rockMat = M('#8a8a96'), rockMat2 = M('#6e6e7a');
   const fireflyM = glowMat(th.glow, 0.9); fireflyM.transparent = true;
   roomMats.push(fireflyM);
-  const crystalM = glowMat(th.glow, 0.7); roomMats.push(crystalM);
-
   platforms.forEach((p, i) => {
     if (p.rock) {
-      const rm = mk(roomGroup, GEO.ico, rockMat, [(p.x + p.w / 2) / 40, wy(p.y) - p.h / 80 + 0.04, 0], [p.w / 80 * 1.15, p.h / 40 * 0.62, 0.7 + p.seed * 0.3], [p.seed, p.seed * 6, 0]);
+      const rockHalfHeight = 0.38;
+      const rm = mk(roomGroup, GEO.ico, rockMat, [(p.x + p.w / 2) / 40, wy(p.y) - rockHalfHeight, 0],
+        [p.w / 80 * (1.1 + p.seed * 0.18), rockHalfHeight, 0.7 + p.seed * 0.3], [p.seed, p.seed * 6, 0]);
       rm.receiveShadow = true;
-      mk(roomGroup, GEO.ico, rockMat2, [(p.x + p.w / 2) / 40 + 0.25, wy(p.y) - 0.1, 0.5], [0.25, 0.18, 0.25], [p.seed * 3, 1, 0]);
+      mk(roomGroup, GEO.ico, rockMat2, [(p.x + p.w / 2) / 40 + (p.seed - 0.5) * 0.35, wy(500) + 0.08, 0.45],
+        [0.18 + p.seed * 0.15, 0.16 + p.seed * 0.08, 0.2 + p.seed * 0.12], [p.seed * 3, 1, 0]);
       return;
     }
     const ground = i === 0, w = ground ? WORLD_W / 40 + 12 : p.w / 40, h = p.h / 40, d = ground ? 10 : 3;
     const cx = ground ? WORLD_W / 80 : (p.x + p.w / 2) / 40, top = wy(p.y);
-    mk(roomGroup, GEO.box, groundM, [cx, top - h / 2, 0], [w, h, d]).receiveShadow = true;
-    const strip = mk(roomGroup, GEO.box, topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
-    if (!ground) {
-      const undersideM = M(th.far2);
-      for (const side of [-1, 1]) {
-        const under = mk(roomGroup, GEO.cone, undersideM, [cx + side * w * 0.28, top - h - 0.2, -2], [Math.max(0.18, w * 0.12), 0.45, 0.65], [Math.PI, 0, side * 0.08]);
-        under.castShadow = false;
+    if (ground) {
+      mk(roomGroup, GEO.box, groundM, [cx, top - h / 2, 0], [w, h, d]).receiveShadow = true;
+      const strip = mk(roomGroup, GEO.box, topM, [cx, top - 0.09, 0], [w + 0.06, 0.2, d + 0.06]); strip.receiveShadow = true;
+    } else {
+      const surface = p.surface || (i % 3 === 0 ? 'canopy' : i % 3 === 1 ? 'bush' : 'ledge');
+      if (surface === 'canopy') {
+        const branch = M('#59402e');
+        for (const side of [-1, 1]) {
+          const support = mk(roomGroup, GEO.taper, branch, [cx + side * w * 0.24, top - 0.5, -1.2],
+            [0.08, 0.75, 0.08], [0, 0, side * 0.4]);
+          support.castShadow = false;
+        }
+        for (let leaf = 0; leaf < 5; leaf++) {
+          const x = cx + (leaf - 2) * w * 0.17, y = top - 0.15 + (leaf % 2) * 0.035;
+          mk(roomGroup, GEO.sph, leaf % 2 ? treeM : topM, [x, y, -0.55 + (leaf % 2) * 0.24],
+            [w * 0.19, 0.17 + (leaf % 2) * 0.035, 0.68]).receiveShadow = true;
+        }
+      } else if (surface === 'bush') {
+        for (let leaf = 0; leaf < 6; leaf++) {
+          const x = cx + (leaf - 2.5) * w * 0.15;
+          mk(roomGroup, GEO.sph, leaf % 3 ? treeM : topM, [x, top - 0.2 + (leaf % 2) * 0.04, -0.45 + (leaf % 2) * 0.3],
+            [w * 0.18, 0.22, 0.55]).receiveShadow = true;
+        }
+        mk(roomGroup, GEO.box, topM, [cx, top - 0.045, -0.35], [w * 0.88, 0.07, 0.8]).receiveShadow = true;
+      } else {
+        const seed = p.seed || Math.random();
+        const ledge = mk(roomGroup, GEO.ico, rockMat, [cx, top - 0.22, -0.35], [w * 0.57, 0.3, 1.25],
+          [seed * 0.2, seed * 1.2, seed * 0.12]);
+        ledge.receiveShadow = true;
+        mk(roomGroup, GEO.box, topM, [cx, top - 0.035, -0.35], [w * 0.84, 0.07, 1.05]).receiveShadow = true;
+        for (const side of [-1, 1]) {
+          mk(roomGroup, GEO.ico, rockMat2, [cx + side * w * 0.28, top - 0.22, -0.45],
+            [w * 0.18, 0.23, 0.82], [seed * 2, side * 0.4, seed]);
+        }
       }
     }
-    const n = ground ? 20 : Math.max(1, Math.round(w / 1.8));
-    for (let k = 0; k < n; k++) {
-      const x = ground ? rand(-8, WORLD_W / 40 + 8) : cx + rand(-w / 2 + 0.2, w / 2 - 0.2), z = ground ? rand(-4.5, -1.2) : rand(-1.2, 1.2);
-      const r = Math.random();
-      if (r < 0.45) spike(roomGroup, topM, [x, top, z], 0.07, rand(0.2, 0.45), [rand(-.3, .3), 0, rand(-.3, .3)]);
-      else if (r < 0.75) mk(roomGroup, GEO.sph, rockM, [x, top + 0.1, z], [rand(.12, .3), rand(.1, .22), rand(.12, .3)]);
-      else spike(roomGroup, crystalM, [x, top, z], 0.1, rand(0.35, 0.8), [rand(-.25, .25), rand(0, 3), rand(-.25, .25)]).traverse(o => { o.castShadow = false; });
+    if (ground) for (let k = 0; k < 12; k++) {
+      const x = rand(-8, WORLD_W / 40 + 8), z = rand(-4.5, -1.2);
+      mk(roomGroup, GEO.sph, k % 3 ? rockMat : topM, [x, top + 0.04, z],
+        [rand(0.11, 0.24), rand(0.05, 0.12), rand(0.1, 0.22)]).castShadow = false;
     }
   });
   // tla za drevesi, da ne lebdijo v zraku
@@ -348,7 +373,7 @@ function buildRoomScene() {
   updateDayNight(0, true);
 }
 function addBackgroundBirds() {
-  const palettes = ['#263447', '#e7e1d2', '#4c4a54', '#263a32'];
+  const palettes = ['#9b795a', '#d2c2a3', '#7b8f91', '#83946f', '#b08b76'];
   const flockCount = 3 + Math.floor(Math.random() * 5);
   for (let flock = 0; flock < flockCount; flock++) {
     const count = 1 + Math.floor(Math.random() * 5);
@@ -376,7 +401,7 @@ function addBackgroundBirds() {
       if (type === 2) mk(bird, GEO.cone, material, [-0.13, 0, 0], [0.04, 0.15, 0.04], [0, 0, -Math.PI / 2]).castShadow = false;
       const scale = rand(1.2, 1.9);
       bird.scale.setScalar(scale);
-      bird.rotation.y = direction < 0 ? Math.PI : 0;
+      bird.rotation.y = direction > 0 ? Math.PI : 0;
       bird.position.set(startX - direction * i * rand(0.45, 0.9), y + rand(-0.45, 0.45), z + rand(-1.5, 1.5));
       bird.userData = { speed: speed * rand(0.88, 1.12), phase: rand(0, Math.PI * 2), wings, direction };
       roomGroup.add(bird);
@@ -470,9 +495,15 @@ function addWetScenery(th, M) {
   if (wetLevel.waterfall) {
     const fallMat = new THREE.MeshBasicMaterial({ map: waterTexture, color: '#d3f7ff', transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false });
     roomMats.push(fallMat);
-    const waterfall = mk(roomGroup, waterGeo, fallMat, [wetLevel.waterfallX, 5.2, -27], [3, 8.5, 1]);
+    const cliffM = M('#626a68'), cliffLightM = M('#858b7c');
+    const cliffX = wetLevel.waterfallX;
+    mk(roomGroup, GEO.ico, cliffM, [cliffX, 6.35, -30], [4.1, 2.1, 1.5], [0.08, 0.15, 0]).castShadow = false;
+    mk(roomGroup, GEO.ico, cliffLightM, [cliffX - 0.45, 5.4, -28.5], [3.15, 0.52, 1.4], [0, 0.18, 0.04]).castShadow = false;
+    const waterfall = mk(roomGroup, waterGeo, fallMat, [cliffX, 3.1, -27.8], [1.35, 4.65, 0.25]);
     waterfall.castShadow = false;
-    const pool = mk(roomGroup, waterGeo, waterMat, [wetLevel.waterfallX, wy(500) + 0.05, -22], [5, 4, 1], [-Math.PI / 2, 0, 0]);
+    const lip = mk(roomGroup, waterGeo, waterMat, [cliffX, 5.12, -27.7], [1.8, 0.22, 0.3]);
+    lip.castShadow = false;
+    const pool = mk(roomGroup, waterGeo, waterMat, [cliffX, wy(500) + 0.05, -22], [5, 4, 1], [-Math.PI / 2, 0, 0]);
     pool.castShadow = false;
     waterFlowTexture = waterTexture;
   }
@@ -604,7 +635,8 @@ let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [
 let synergyCards = [], pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
 const treeView = { yaw: -0.24, pitch: 0.22, distance: 30 };
 let treeDrag = null, suppressTreeClick = false;
-const SAVE_KEY = 'evo-save-v1';
+const SAVE_KEY = 'evo-save-v2';
+try { localStorage.removeItem('evo-save-v1'); } catch (e) { /* rekord ostane ohranjen */ }
 
 function newPlayer() {
   return { x: 80, y: 400, w: 28, h: 36, vx: 0, vy: 0, face: 1, hp: stats.maxHp, ground: false, coyote: 0, buffer: 0,
@@ -705,9 +737,14 @@ function spawnEnemy(kind, x, y, bossType) {
   const type = kind === 'boss' ? (bossType || bossTypeForRoom(room)) : null;
   const sz = kind === 'boss' && type === 'matriarch' ? [64, 70] : kind === 'boss' && type === 'storm' ? [60, 62]
     : { walker: [30, 28], hopper: [26, 26], spitter: [26, 32], armored: [40, 36], boss: [56, 64] }[kind];
-  const baseHp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind] + Math.floor(room / 2);
-  const hp = baseHp * (difficulty === 'challenge' ? 1.2 : 1);
+  const evolution = Math.floor(room / 2);
+  const postBosses = Math.max(0, run.bosses || 0);
+  const growth = (1 + evolution * 0.14) * Math.pow(1.2, postBosses);
+  const baseHp = kind === 'boss' ? 18 + room * 2 : { walker: 2, hopper: 2, spitter: 2, armored: 5 }[kind];
+  const hp = baseHp * growth * (difficulty === 'challenge' ? 1.2 : 1);
+  const damage = ({ walker: 1, hopper: 1.1, spitter: 1, armored: 1.25, boss: 1.5 })[kind] * growth;
   const e = { kind, bossType: type, x, y, w: sz[0], h: sz[1], vx: 0, vy: 0, hp, maxHp: hp, dir: -1, face: -1, turnT: 0, ground: false,
+    evolution, postBosses, damage,
     flash: 0, kb: 0, t: Math.random() * 2, shootT: 1 + Math.random() * 2, chargeT: 0, chargeCd: 3, chargeDir: -1,
     bossMove: 'idle', bossTellT: 0, bossTargetX: 0, bossPattern: 0,
     poisT: 0, poisDps: 0, burnT: 0, burnDps: 0, chillT: 0, stunT: 0, rot: Math.PI + 0.35, ph: 0 };
@@ -743,19 +780,23 @@ function startRoom() {
     fruitTree = { x: 520, y: 365, age: 0, fall: 0, fallen: false };
     fruitPending = false;
   }
+  const platformSurface = () => {
+    const r = Math.random();
+    return r < (THEMES[roomThemeIndex].style === 'round' ? 0.5 : 0.33) ? 'canopy' : r < 0.68 ? 'bush' : 'ledge';
+  };
   let pathX = 160;
   [425, 350, 400, 310, 380].forEach((y, tier) => {
     const w = rand(140, 220), x = clamp(pathX + rand(-55, 55), 30, WORLD_W - w - 30);
-    platforms.push({ x, y: y + (room % 2 ? rand(-18, 18) : 0), w, h: 16 });
+    platforms.push({ x, y: y + (room % 2 ? rand(-18, 18) : 0), w, h: 16, surface: platformSurface(), seed: Math.random() });
     if (tier === 1 || tier === 3) {
       const altX = clamp(x + rand(100, 170), 30, WORLD_W - 170);
-      platforms.push({ x: altX, y: y + rand(30, 75), w: rand(110, 170), h: 16 });
+      platforms.push({ x: altX, y: y + rand(30, 75), w: rand(110, 170), h: 16, surface: platformSurface(), seed: Math.random() });
     }
     pathX += rand(220, 280);
   });
   const nRocks = 3 + Math.floor(Math.random() * 4);
   for (let i = 0; i < nRocks; i++) {
-    const w = rand(38, 62), x = rand(170, WORLD_W - 120);
+    const w = rand(36, 82), x = rand(170, WORLD_W - 120);
     if (!platforms.some(q => q.rock && Math.abs(q.x - x) < 130)) platforms.push({ x, y: 500 - 26, w, h: 26, rock: true, seed: Math.random() });
   }
   const isBoss = room % 5 === 0;
@@ -1040,7 +1081,7 @@ function updatePlay(dt) {
               e.vx = 0;
               if (e.bossTellT === 0) {
                 for (const offset of [-36, 0, 36]) shots.push({
-                  x: e.bossTargetX + offset, y: 492, vx: 0, vy: -500, r: 9, enemyShot: true, color: '#88e05d',
+                  x: e.bossTargetX + offset, y: 492, vx: 0, vy: -500, r: 9, enemyShot: true, damage: e.damage, color: '#88e05d',
                 });
                 e.bossMove = 'idle';
                 e.chargeCd = rage ? 3.4 : 5.1;
@@ -1058,7 +1099,7 @@ function updatePlay(dt) {
               e.bossTellT = Math.max(0, e.bossTellT - dt);
               if (e.bossTellT === 0) {
                 for (const offset of [-64, 0, 64]) shots.push({
-                  x: e.bossTargetX + offset, y: 0, vx: 0, vy: 600, r: 9, enemyShot: true, color: '#fff35a',
+                  x: e.bossTargetX + offset, y: 0, vx: 0, vy: 600, r: 9, enemyShot: true, damage: e.damage, color: '#fff35a',
                 });
                 e.bossMove = 'idle';
                 e.chargeCd = rage ? 3.5 : 5;
@@ -1077,7 +1118,7 @@ function updatePlay(dt) {
               e.bossMove = 'idle';
               e.chargeCd = rage ? 3.8 : 5.2;
               ring(targetX, 492, '#ff5364', 180, 0.5);
-              if (Math.abs(p.x + p.w / 2 - targetX) < 100 && p.y + p.h > 450) hurtPlayer(e, 1.5);
+              if (Math.abs(p.x + p.w / 2 - targetX) < 100 && p.y + p.h > 450) hurtPlayer(e, e.damage || 1.5);
               burst(targetX, 486, '#ff5364', 18);
             }
           } else if (e.chargeT > 0) {
@@ -1089,7 +1130,7 @@ function updatePlay(dt) {
               e.bossMove = 'idle';
               e.stunT = 0.65;
               e.vx = 0;
-              for (const dir of [-1, 1]) shots.push({ x: e.x + e.w / 2, y: 492, vx: dir * 190, vy: 0, r: 8, enemyShot: true, wave: true, color: '#ffb347' });
+              for (const dir of [-1, 1]) shots.push({ x: e.x + e.w / 2, y: 492, vx: dir * 190, vy: 0, r: 8, enemyShot: true, wave: true, damage: e.damage, color: '#ffb347' });
             }
           } else if (e.chargeCd <= 0 && Math.abs(dx) < 520) {
             if (e.bossPattern % 2 === 0) {
@@ -1113,7 +1154,7 @@ function updatePlay(dt) {
             if (e.shootT <= 0) {
               e.shootT = rage ? 1.6 : 2.6;
               const base = Math.atan2(p.y + p.h / 2 - e.y - 20, p.x + p.w / 2 - e.x - e.w / 2);
-              for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7, enemyShot: true, color: '#ff6a5a' });
+              for (const o of rage ? [-0.3, 0, 0.3] : [0]) shots.push({ x: e.x + e.w / 2, y: e.y + 20, vx: Math.cos(base + o) * 240, vy: Math.sin(base + o) * 240, r: 7, enemyShot: true, damage: e.damage, color: '#ff6a5a' });
             }
           }
         }
@@ -1124,7 +1165,7 @@ function updatePlay(dt) {
         if (e.shootT <= 0 && d < 520) {
           e.shootT = 2.2;
           const ang = Math.atan2(p.y + p.h / 2 - e.y, p.x + p.w / 2 - e.x);
-          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6, enemyShot: true, color: '#c6ff00' });
+          shots.push({ x: e.x + e.w / 2, y: e.y + 8, vx: Math.cos(ang) * 260, vy: Math.sin(ang) * 260, r: 6, enemyShot: true, damage: e.damage, color: '#c6ff00' });
         }
       } else {
         e.vx = e.dir * (e.kind === 'hopper' ? 90 : 70 + room * 4);
@@ -1157,13 +1198,13 @@ function updatePlay(dt) {
       e.vy = -180; shake = 3; hitstop = 0.045; burst(e.x + e.w / 2, e.y + e.h / 2, '#ffd54f');
     } else if (overlap(p, e) && p.inv <= 0 && e.stunT <= 0) {
       if (s.thorns) { e.hp -= s.thorns; e.flash = 0.1; if (s.thornPoison) poison(e); if (s.thornFire) ignite(e); if (s.thornChill) e.chillT = 2.5; }
-      if (e.hp > 0) hurtPlayer(e, e.kind === 'boss' ? 1.5 : 1);
+      if (e.hp > 0) hurtPlayer(e, e.damage || (e.kind === 'boss' ? 1.5 : 1));
     }
   }
   for (const b of shots) {
     b.x += b.vx * dt; b.y += b.vy * dt;
     if (p.atkT > 0 && Math.hypot(b.x - box.x - box.w / 2, b.y - box.y - box.h / 2) < s.reach + 10) { b.dead = true; burst(b.x, b.y, '#aed581', 5); }
-    else if (p.inv <= 0 && overlap(p, { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 })) { b.dead = true; hurtPlayer(b); }
+    else if (p.inv <= 0 && overlap(p, { x: b.x - b.r, y: b.y - b.r, w: b.r * 2, h: b.r * 2 })) { b.dead = true; hurtPlayer(b, b.damage || 1); }
     else if (b.x < 0 || b.x > WORLD_W || b.y < 0 || b.y > H || platforms.some(q => overlap({ x: b.x - 3, y: b.y - 3, w: 6, h: 6 }, q))) b.dead = true;
   }
   shots.filter(b => b.dead).forEach(removeObj); shots = shots.filter(b => !b.dead);
@@ -1724,7 +1765,7 @@ function animatePlayer(dt, t) {
 }
 function animateEnemies(dt, t) {
   for (const e of enemies) {
-    if (!e.rig) { e.rig = buildEnemy(e.kind, e.bossType); scene.add(e.rig.root); }
+    if (!e.rig) { e.rig = buildEnemy(e.kind, e.bossType, e.evolution || 0, e.postBosses || 0); scene.add(e.rig.root); }
     const rig = e.rig;
     rig.root.position.set(wx(e.x + e.w / 2), wy(e.y + e.h), 0);
     const face = (e.kind === 'armored' || e.kind === 'boss') ? e.face : e.dir;
@@ -1737,7 +1778,10 @@ function animateEnemies(dt, t) {
     rig.segments.forEach((segment, i) => {
       segment.position.y = segment.userData.baseY + Math.sin(t * 7 - i * 0.75) * 0.035 * mv;
     });
-    if (e.kind === 'hopper') { const st = clamp(-e.vy / 1800, -0.15, 0.15); rig.model.scale.set(1 - st * 0.5, 1 + st, 1 - st * 0.5); }
+    if (e.kind === 'hopper') {
+      const st = clamp(-e.vy / 1800, -0.15, 0.15), growth = rig.growthScale || 1;
+      rig.model.scale.set((1 - st * 0.5) * growth, (1 + st) * growth, (1 - st * 0.5) * growth);
+    }
     if (rig.head) rig.head.rotation.z = Math.sin(t * 2 + e.t) * 0.12 - (e.shootT < 0.4 ? 0.4 : 0);
     if (rig.stalk) rig.stalk.rotation.z = -0.24 + Math.sin(t * 2.2 + e.t) * 0.06;
     if (rig.sac) rig.sac.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(t * 5 + e.t);

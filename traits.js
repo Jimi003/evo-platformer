@@ -18,6 +18,15 @@ const NICHES = {
   syn: { name: 'Sinergija', color: '#ff7ad9' },
   boss: { name: 'Tiran', color: '#ffd54f' },
 };
+const BODY_PLANS = {
+  arthropod: { name: 'členonožec', niche: 'predator' },
+  mollusk: { name: 'mehkužec', niche: 'water' },
+  chordate: { name: 'strunar', niche: 'swift' },
+  echinoderm: { name: 'iglokožec', niche: 'bulwark' },
+  annelid: { name: 'kolobarnik', niche: 'land' },
+  flatworm: { name: 'ploščati črv', niche: 'land' },
+  nematode: { name: 'valjasti črv', niche: 'venom' },
+};
 const ACTIVE_KEYS = ['KeyE', 'KeyQ', 'KeyR'];
 const ACTIVE_KEY_LABELS = ['E', 'Q', 'R'];
 const TRAITS = [];
@@ -44,9 +53,9 @@ function traitAllowedByPath(t, path) {
   return !selected.some(niche => nichesConflict(niche, t.niche));
 }
 // --- Plenilec ---
-T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'] });
+T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'], bodyPlan: 'arthropod' });
 T('rending', 'Razdiralni kremplji', 'predator', 'claws', '+1 škode in daljši kremplji', s => { s.dmg += 1; s.reach += 12; });
-T('horns', 'Rogovi', 'predator', null, 'močneje odbiješ sovražnike in povzročiš +0,5 škode; ohraniš štirinožno držo', s => { s.knock += 120; s.dmg += 0.5; }, { excludes: ['claws'] });
+T('horns', 'Rogovi', 'predator', null, 'močneje odbiješ sovražnike in povzročiš +0,5 škode; ohraniš štirinožno držo', s => { s.knock += 120; s.dmg += 0.5; }, { excludes: ['claws'], bodyPlan: 'chordate' });
 T('frenzy', 'Bes', 'predator', 'rending', 'napadaš hitreje', s => { s.atkCd *= 0.75; }, { excludes: ['carapace'] });
 T('cleave', 'Krožni zamah', 'predator', 'rending', 'zamahneš v obe smeri', s => { s.spin = true; s.reach += 6; });
 T('apex', 'Vrhunski plenilec', 'predator', 'frenzy', 'ko premagaš sovražnika, si povrneš zdravje', s => { s.lifesteal = 1; s.dmg += 1; });
@@ -55,7 +64,7 @@ T('ram', 'Naskok', 'predator', 'horns', 'sunek poškoduje sovražnike', s => { s
 T('breaker', 'Lomilec oklepa', 'predator', 'horns', 'napadi prebijejo oklep in povzročijo +0,5 škode', s => { s.pierce = true; s.dmg += 0.5; });
 T('gore', 'Nabijanje', 'predator', 'ram', 'sunek povzroči veliko škode in odbije sovražnike', s => { s.dashDmg += 2; s.knock += 100; });
 // --- Hitrost ---
-T('legs', 'Močne noge', 'swift', null, 'tečeš hitreje in skačeš višje', s => { s.speed += 40; s.jump += 40; });
+T('legs', 'Močne noge', 'swift', null, 'tečeš hitreje in skačeš višje', s => { s.speed += 40; s.jump += 40; }, { bodyPlan: 'chordate' });
 T('hops', 'Prožen odriv', 'swift', 'legs', '+60 višine skoka', s => { s.jump += 60; });
 T('tail', 'Rep za ravnotežje', 'swift', 'legs', 'nekoliko hitreje tečeš in višje skačeš', s => { s.speed += 25; s.jump += 20; });
 T('dash', 'Hiter sunek', 'swift', 'hops', 'sunkovito se poženeš naprej (K / Shift)', s => { s.dash = true; });
@@ -65,7 +74,7 @@ T('flyer', 'Močnejša krila', 'air', 'thermals', 'močnejši zamah ti omogoči 
 T('sprint', 'Šprint', 'swift', 'tail', 'tečeš precej hitreje', s => { s.speed += 70; });
 T('pounce', 'Udar ob pristanku', 'swift', 'tail', 'pristanek po padcu poškoduje bližnje sovražnike', s => { s.stomp = true; }, { requires: ['tail', 'hops'] });
 // --- Vzdržljivost ---
-T('hide', 'Debela koža', 'bulwark', null, '+3 zdravja', s => { s.maxHp += 3; });
+T('hide', 'Debela koža', 'bulwark', null, '+3 zdravja', s => { s.maxHp += 3; }, { bodyPlan: 'echinoderm' });
 T('carapace', 'Oklep', 'bulwark', 'hide', '+5 zdravja, vendar tečeš počasneje; ni združljiv z letom', s => { s.maxHp += 5; s.speed -= 30; }, { excludes: ['frenzy', 'wings', 'thermals', 'flyer'] });
 T('fat', 'Maščobne zaloge', 'bulwark', 'hide', '+2 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 2; s.regen += 0.15; });
 T('spikes', 'Bodice', 'bulwark', 'carapace', 'sovražniki, ki se te dotaknejo, prejmejo škodo', s => { s.thorns += 2; });
@@ -76,7 +85,7 @@ T('bulk', 'Težka postava', 'bulwark', 'fat', '+1 škode in +2 zdravja; težka p
 T('undying', 'Nesmrtna vzdržljivost', 'bulwark', 'regen', 'enkrat na tek se po porazu vrneš v boj', s => { s.revive = true; });
 T('stonehide', 'Kamnite luske', 'bulwark', 'carapace', '+1 zdravje in 15 % manj prejete škode', s => { s.maxHp += 1; s.damageReduction += 0.15; });
 // --- Strup ---
-T('fangs', 'Strupeni zobje', 'venom', null, 'tvoji napadi zastrupijo sovražnike', s => { s.poison = 1; s.poisonDur = 3; });
+T('fangs', 'Strupeni zobje', 'venom', null, 'tvoji napadi zastrupijo sovražnike', s => { s.poison = 1; s.poisonDur = 3; }, { bodyPlan: 'nematode' });
 T('glands', 'Strupne žleze', 'venom', 'fangs', 'strup je močnejši in traja dlje', s => { s.poison += 0.7; s.poisonDur += 2; });
 T('camo', 'Mimikrija', 'venom', 'fangs', 'po zadetku si dlje časa neranljiv', s => { s.invTime = 1.8; });
 T('spit', 'Kisli pljunek', 'venom', 'glands', 'izstreliš strupeni izstrelek (L)', s => { s.spit = true; }, { excludes: ['spikes'] });
@@ -97,7 +106,7 @@ T('miasma', 'Strupena meglica', 'venom', 'cloud', 'AKTIVNO: zastrupiš bližnje 
 T('epidemic', 'Epidemija', 'venom', 'plague', 'AKTIVNO: za 3 sekunde zmerno zastrupiš vse sovražnike', s => {}, { active: { cd: 24, name: 'Epidemija', color: '#9be15d' } });
 T('neuro', 'Nevrotoksin', 'venom', 'slow', '+1 strup; zastrupljeni sovražniki se še počasneje premikajo', s => { s.poison += 1; });
 // --- Ogenj (nova niša) ---
-T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; }, { excludes: ['gel'] });
+T('ember', 'Žerjavica v krvi', 'fire', null, 'tvoji napadi zažgejo sovražnike', s => { s.burn = 1.2; s.burnDur = 3; }, { excludes: ['gel'], bodyPlan: 'chordate' });
 T('breath', 'Ognjeni dih', 'fire', 'ember', 'AKTIVNO: izbruhaš plamene pred seboj', s => {}, { active: { cd: 5, name: 'Ognjeni dih', color: '#ff8a2a' } });
 T('scorch', 'Ožgana sled', 'fire', 'ember', 'zažgeš bližnje sovražnike', s => { s.fireAura = true; });
 T('molten', 'Staljena koža', 'fire', 'ember', '+2 zdravja; sovražniki, ki se te dotaknejo, zagorijo', s => { s.maxHp += 2; s.thorns += 2; s.thornFire = true; });
@@ -105,7 +114,7 @@ T('inferno', 'Ognjeni vihar', 'fire', 'breath', 'ogenj povzroča več škode in 
 T('cinder', 'Žareči pepel', 'fire', 'scorch', 'goreči sovražniki ob porazu eksplodirajo', s => { s.cinder = true; });
 T('magma', 'Magma', 'fire', 'molten', '+4 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 4; s.regen += 0.2; });
 // --- Voda (led je globoko v veji) ---
-T('gel', 'Sluzasta koža', 'water', null, '+2 zdravja in +20 hitrosti; ne združuje se z ognjem ali letom', s => { s.maxHp += 2; s.speed += 20; }, { excludes: ['ember', 'wings', 'thermals'] });
+T('gel', 'Sluzasta koža', 'water', null, '+2 zdravja in +20 hitrosti; ne združuje se z ognjem ali letom', s => { s.maxHp += 2; s.speed += 20; }, { excludes: ['ember', 'wings', 'thermals'], bodyPlan: 'mollusk' });
 T('gills', 'Škrge', 'water', 'gel', '+2 zdravja in počasna obnova (+0,2 zdravja/s)', s => { s.maxHp += 2; s.regen += 0.2; });
 T('fins', 'Plavuti', 'water', 'gel', 'odkleneš sunek, če ga še nimaš, in pridobiš +30 hitrosti', s => { s.dash = true; s.speed += 30; });
 T('tentacle', 'Lovke', 'water', 'gel', '+18 dosega in +0,5 škode', s => { s.reach += 18; s.dmg += 0.5; });
@@ -116,7 +125,7 @@ T('blizzard', 'Snežni vihar', 'water', 'frost', 'AKTIVNO: zamrzneš bližnje so
 T('permafrost', 'Večni led', 'water', 'frost', 'ohlajeni sovražniki prejmejo 50 % več škode', s => { s.shatter = true; }, { requires: ['frost', 'iceshell'] });
 T('leviathan', 'Levijatan', 'water', 'torrent', 'postaneš večji; +3 zdravja in +1 škode', s => { s.maxHp += 3; s.dmg += 1; }, { scale: 1.15 });
 // --- Rastline ---
-T('roots', 'Korenine', 'land', null, '+3 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 3; s.regen += 0.1; });
+T('roots', 'Korenine', 'land', null, '+3 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 3; s.regen += 0.1; }, { bodyPlan: 'annelid' });
 T('vines', 'Plezalke', 'land', 'roots', '+22 dosega in +0,5 škode', s => { s.reach += 22; s.dmg += 0.5; });
 T('bloom', 'Cvetenje', 'land', 'roots', 'zdravje se obnavlja hitreje', s => { s.regen += 0.3; });
 T('thornvine', 'Trnasta ovijalka', 'land', 'vines', 'sovražniki, ki se te dotaknejo, prejmejo škodo', s => { s.thorns += 2; });
@@ -128,7 +137,7 @@ T('bloomburst', 'Cvetni izbruh', 'land', 'spores', 'AKTIVNO: povrneš si 2 točk
 T('mossmantle', 'Mahovna simbioza', 'land', 'spores', 'telo preraste mah; +2 zdravja in hitrejša obnova (+0,25/s)', s => { s.maxHp += 2; s.regen += 0.25; });
 T('giantbloom', 'Hrbtna megacvetnica', 'land', 'canopy', 'na hrbtu zraste velika rastlina; +3 zdravja in +0,2 obnove/s', s => { s.maxHp += 3; s.regen += 0.2; });
 // --- Zrak (elektrika) ---
-T('feathers', 'Perje', 'air', null, 'telo prekrije perje in pridobiš +20 hitrosti', s => { s.speed += 20; });
+T('feathers', 'Perje', 'air', null, 'telo prekrije perje in pridobiš +20 hitrosti', s => { s.speed += 20; }, { bodyPlan: 'chordate' });
 T('static', 'Statični naboj', 'air', 'feathers', 'tvoj napad z elektriko zadene še bližnjega sovražnika', s => { s.arc = 1; });
 T('thermals', 'Vzponski tokovi', 'air', 'feathers', 'med padanjem lahko drsiš (drži tipko za skok)', s => { s.glide = true; s.glideFall = 90; }, { excludes: ['carapace', 'gel', 'bulk'] });
 T('swoop', 'Jadralni napad', 'air', 'thermals', 'odkleneš sunek, če ga še nimaš; napadi med drsenjem povzročijo +1 škodo', s => { s.dash = true; s.glideDmg += 1; });
@@ -141,6 +150,7 @@ T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši nap
 T('stinger', 'Strupeno želo', 'venom', 'fangs', 'z repnim želom okrepiš strup (+0,5) in njegov učinek (+1 s)', s => { s.stinger = true; s.poison += 0.5; s.poisonDur += 1; });
 T('pincers', 'Klešče', 'predator', 'horns', '+0,5 škode in +10 dosega; ohraniš štirinožno držo', s => { s.dmg += 0.5; s.reach += 10; }, { excludes: ['claws'] });
 T('manylegs', 'Šest nog', 'bulwark', 'carapace', 'razviješ dodaten par nog in pridobiš +20 hitrosti', s => { s.speed += 20; });
+T('creepingbody', 'Plosko telo', 'land', 'roots', 'telo se razširi in splošči; razviješ značilno drseče gibanje', s => { s.speed += 15; }, { bodyPlan: 'flatworm' });
 // Skrite starodavne prilagoditve so na voljo samo kot nagrada za raziskovanje brlogov.
 T('heartroot', 'Koreninsko srce', 'land', null, '+2 zdravja in počasna obnova (+0,25 zdravja/s)', s => { s.maxHp += 2; s.regen += 0.25; }, { secret: true });
 T('tidalheart', 'Srce globin', 'water', null, '+1 zdravje; tvoji napadi upočasnijo sovražnike', s => { s.maxHp += 1; s.chill = true; }, { secret: true, excludes: ['ember'] });
@@ -154,7 +164,7 @@ T('cracker', 'Lomilec oklepa', 'boss', null, 'prebiješ sovražnikov oklep in po
 T('alpha', 'Alfa naskok', 'boss', null, 'tečeš in napadaš hitreje; odkleneš močnejši sunek', s => { s.atkCd *= 0.75; s.speed += 40; s.dash = true; s.dashDmg += 1; }, { boss: true });
 
 const TRAIT_DIMENSIONS = {
-  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'gills', 'fins', 'tentacle', 'roots', 'vines', 'feathers', 'skyshroud', 'stinger', 'pincers'],
+  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'gills', 'fins', 'tentacle', 'roots', 'vines', 'feathers', 'skyshroud', 'stinger', 'pincers', 'creepingbody'],
   movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'swoop', 'gust', 'stormcloud', 'gale', 'alpha'],
   offense: ['rending', 'frenzy', 'cleave', 'apex', 'bloodscent', 'ram', 'breaker', 'gore', 'spit', 'plague', 'ambush', 'roar', 'trample',
     'meteor', 'quills', 'miasma', 'epidemic', 'neuro', 'ember', 'breath', 'scorch', 'inferno', 'cinder', 'frost', 'torrent',
@@ -264,6 +274,10 @@ function offers(owned, n = 3, path = null) {
   if (path && !pathNiches(path).length) candidates = candidates.filter(t => traitRequires(t).length === 0);
   else if (path && pathNiches(path).length) candidates = candidates.filter(t => traitAllowedByPath(t, path));
   const selectedNiches = pathNiches(path);
+  const founding = !!path && path.founderPicks < 3;
+  const newRoots = founding && selectedNiches.length < 3
+    ? candidates.filter(t => traitRequires(t).length === 0 && !selectedNiches.includes(t.niche))
+    : [];
   const pool = candidates.map(t => ({
     t,
     w: (1 + 2.5 * inv[t.niche]) * (selectedNiches.includes(t.niche) ? 3 : 1)
@@ -272,11 +286,26 @@ function offers(owned, n = 3, path = null) {
   const out = [];
   const leastInvested = Math.min(...pool.map(x => dimInv[x.t.dimension]));
   const fresh = pool.filter(x => dimInv[x.t.dimension] === leastInvested);
-  if (owned.size > 0 && fresh.length && n >= 3 && out.length < n - 1) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
+  if (!founding && owned.size > 0 && fresh.length && n >= 3 && out.length < n - 1) out.push(pool.splice(pool.indexOf(fresh[Math.floor(Math.random() * fresh.length)]), 1)[0].t);
+  const pickWeighted = choices => {
+    let r = Math.random() * choices.reduce((sum, item) => sum + item.w, 0), i = 0;
+    while (i < choices.length - 1 && (r -= choices[i].w) > 0) i++;
+    return choices[i];
+  };
+  while (out.length < n && newRoots.length) {
+    const chosen = newRoots[Math.floor(Math.random() * newRoots.length)];
+    out.push(chosen);
+    newRoots.splice(newRoots.indexOf(chosen), 1);
+    for (let i = newRoots.length - 1; i >= 0; i--) if (newRoots[i].niche === chosen.niche) newRoots.splice(i, 1);
+    const index = pool.findIndex(x => x.t.id === chosen.id);
+    if (index >= 0) pool.splice(index, 1);
+  }
   while (out.length < n && pool.length) {
-    let r = Math.random() * pool.reduce((a, b) => a + b.w, 0), i = 0;
-    while (i < pool.length - 1 && (r -= pool[i].w) > 0) i++;
-    out.push(pool.splice(i, 1)[0].t);
+    const distinct = pool.filter(x => !out.some(t => t.niche === x.t.niche));
+    const available = distinct.length ? distinct : pool;
+    const chosen = pickWeighted(available);
+    out.push(chosen.t);
+    pool.splice(pool.indexOf(chosen), 1);
   }
   for (const g of GENERIC) if (out.length < n) out.push(g);
   return out;
@@ -329,7 +358,9 @@ function creatureIdentity(owned, path = null) {
     'fire:air': 'Ognjeni letalec', 'air:fire': 'Ognjeni zmaj',
   };
   const base = secondary && identities[`${primary}:${secondary}`] || singleIdentity(primary);
-  return tertiary ? `${base} · ${NICHES[tertiary].name}` : base;
+  const identity = tertiary ? `${base} · ${NICHES[tertiary].name}` : base;
+  const bodyPlanNames = [...new Set([...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && t.bodyPlan).map(t => BODY_PLANS[t.bodyPlan].name))];
+  return bodyPlanNames.length ? `${identity} · debla: ${bodyPlanNames.join(' / ')}` : identity;
 }
 function singleIdentity(primary) {
   const single = {

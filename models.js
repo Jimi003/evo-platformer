@@ -108,23 +108,39 @@ function buildCreature(owned) {
   // Osnova je okrogel slime; korenske lastnosti niš dodajo osnovne dele telesa, z več lastnostmi pa se oblika "izostri".
   const nTraits = [...owned].filter(id => TRAIT_BY_ID[id] && !TRAIT_BY_ID[id].boss).length;
   const invest = nicheInvest(owned);
+  const bodyPlanTraits = [...owned].map(id => TRAIT_BY_ID[id]).filter(t => t && t.bodyPlan);
+  const bodyPlans = new Set(bodyPlanTraits.map(t => t.bodyPlan));
+  if (has('creepingbody')) bodyPlans.add('flatworm');
+  const bodyPlan = bodyPlanTraits[0] && bodyPlanTraits[0].bodyPlan || (has('creepingbody') ? 'flatworm' : null);
+  const bodyPlanNiche = bodyPlan && BODY_PLANS[bodyPlan] && BODY_PLANS[bodyPlan].niche;
+  const bodyPlanGrowth = bodyPlanNiche ? Math.min(1, 0.3 + invest[bodyPlanNiche] / 8 * 0.7) : 0;
+  const growthForPlan = plan => {
+    const source = bodyPlanTraits.find(t => t.bodyPlan === plan);
+    return source ? Math.min(1, 0.3 + invest[source.niche] / 8 * 0.7) : bodyPlanGrowth;
+  };
   const swiftGrowth = Math.min(1, invest.swift / 8), predatorGrowth = Math.min(1, invest.predator / 8);
   const legGrowth = Math.min(1, (invest.swift * 0.6 + invest.predator * 0.4) / 8);
   const venomGrowth = Math.min(1, invest.venom / 8), airGrowth = Math.min(1, invest.air / 8);
   const headGrowth = Math.min(1, Math.max(0, nTraits - 1) / 7);
   const manyLegs = has('manylegs');
-  const quad = manyLegs || ['legs', 'roots', 'alpha', 'bulk', 'carapace', 'spikes', 'stonehide', 'ironbloom'].some(has)
+  const quad = manyLegs || bodyPlans.has('echinoderm') || ['legs', 'roots', 'alpha', 'bulk', 'carapace', 'spikes', 'stonehide', 'ironbloom'].some(has)
     || has('horns') && !has('claws');
   const legsOn = quad;
   const armsOn = ['claws', 'pincers', 'tentacle', 'vines'].some(has);
-  const tailOn = ['tail', 'fins', 'flyer', 'stinger'].some(has) || has('feathers') && airGrowth >= 0.25;
+  const tailOn = ['tail', 'fins', 'flyer', 'stinger'].some(has) || has('feathers') && airGrowth >= 0.25
+    || bodyPlans.has('chordate');
   const defenseGrowth = Math.min(1, invest.bulwark / 8);
   const bulk = 1 + defenseGrowth * 0.08 + (has('bulk') ? 0.06 : 0);
   const thick = 1 + defenseGrowth * 0.06, fatK = 1 + defenseGrowth * 0.1 + (has('fat') ? 0.08 : 0);
   const L = legsOn ? 0.15 + legGrowth * 0.28 + (has('sprint') ? 0.04 : 0) : 0;
-  const tr = [0.43 - headGrowth * 0.07, 0.29 - headGrowth * 0.02, 0.29 - headGrowth * 0.07];
+  const lengthScale = bodyPlans.has('nematode') ? 1.16 + growthForPlan('nematode') * 0.12
+    : bodyPlans.has('flatworm') ? 1.1 + growthForPlan('flatworm') * 0.12
+      : bodyPlans.has('annelid') ? 1.06 + growthForPlan('annelid') * 0.08 : 1;
+  const heightScale = bodyPlans.has('nematode') ? 0.82 : bodyPlans.has('flatworm') ? 0.72
+    : bodyPlans.has('annelid') ? 0.88 : 1;
+  const tr = [(0.43 - headGrowth * 0.07) * lengthScale, (0.29 - headGrowth * 0.02) * heightScale, 0.29 - headGrowth * 0.07];
   const ty = L + 0.31 - headGrowth * 0.025;
-  model.scale.setScalar(0.95 * bulk);
+  model.scale.set(0.95 * bulk * lengthScale, 0.95 * bulk * heightScale, 0.95 * bulk);
 
   // noge (skupine obstajajo vedno zaradi animacije, mreže le če imaš noge)
   rig.legs = [];
@@ -154,6 +170,7 @@ function buildCreature(owned) {
   for (let i = 0; i < segs; i++) {
     const piv = new THREE.Group();
     piv.position.set(tpos[0], tpos[1], tpos[2]);
+    if (has('stinger')) piv.rotation.z = -0.17;
     tp.add(piv);
     const r = 0.11 * (1 - i / (segs + 1)) + 0.02;
     mk(piv, GEO.taper, bodyM, [-segLen / 2, 0, 0], [r, segLen, r], [0, 0, Math.PI / 2]);
@@ -161,7 +178,7 @@ function buildCreature(owned) {
     rig.tail.push(piv);
     tp = piv; tpos = [-segLen, 0, 0];
   }
-  if (has('stinger')) spike(tp, glowMat('#b455d6', 0.75), [-segLen, 0, 0], 0.045, 0.24, [0, 0, Math.PI / 2]);
+  if (has('stinger')) spike(tp, glowMat('#b455d6', 0.75), [-segLen, 0, 0], 0.045, 0.24, [0, 0, 0]);
   else if (has('fangs')) spike(tp, accM, [-segLen, 0, 0], 0.035, 0.17, [0, 0, Math.PI / 2]);
   else if (has('barbed')) mk(tp, GEO.sph, boneM, [-segLen, 0, 0], [0.07, 0.07, 0.07]);
   if (tailOn && has('feathers') && airGrowth >= 0.2) {
@@ -231,7 +248,10 @@ function buildCreature(owned) {
         for (let i = -1; i <= 1; i++) spike(piv, glowMat('#ffd24a', 1.2), [0.05, -armLen - 0.05, i * 0.04], 0.018, 0.16, [0, 0, -1.5]);
       }
       if (has('pincers')) for (const side of [-1, 1]) {
-        spike(piv, boneM, [0.12, -armLen - 0.02, side * 0.045], 0.025, 0.14, [0, side * 0.25, -1.35]);
+        const clawRoot = [0.11, -armLen - 0.015, side * 0.04];
+        mk(piv, GEO.sph, armorM, clawRoot, [0.075, 0.06, 0.075]);
+        spike(piv, boneM, [clawRoot[0] + 0.02, clawRoot[1] + 0.035, side * 0.075], 0.026, 0.18, [0, side * 0.28, -1.25]);
+        spike(piv, boneM, [clawRoot[0] + 0.025, clawRoot[1] - 0.035, side * 0.075], 0.022, 0.15, [0, -side * 0.22, -1.82]);
       }
     }
     piv.userData.side = side;
@@ -434,6 +454,48 @@ function buildCreature(owned) {
     rig.glow.castShadow = false;
     if (!has('regen')) rig.glow.visible = false;
   }
+  if (bodyPlans.has('arthropod')) {
+    const planGrowth = growthForPlan('arthropod');
+    const plateCount = 3 + Math.floor(planGrowth * 3);
+    for (let i = 0; i < plateCount; i++) {
+      const x = -0.22 + i * 0.14;
+      mk(torso, GEO.sph, armorM, [x, ty + tr[1] * 0.76, 0], [0.085, 0.07, 0.22], [0, 0, 0.12]);
+    }
+    for (const side of [-1, 1]) spike(head, armorM, [-0.08, 0.13, side * 0.1], 0.022, 0.18 + planGrowth * 0.06, [side * 0.7, 0, 0.18]);
+  }
+  if (bodyPlans.has('mollusk')) {
+    const planGrowth = growthForPlan('mollusk');
+    mk(torso, GEO.sph, armorM, [-0.2, ty + tr[1] * 0.78, 0], [0.22, 0.105, 0.25]);
+    if (!has('tentacle')) for (const side of [-1, 1]) {
+      const stalk = mk(head, GEO.taper, bodyM, [-0.04, 0.18, side * 0.1], [0.025, 0.16 + planGrowth * 0.06, 0.025], [side * 0.12, 0, -0.18]);
+      mk(head, GEO.sph, eyeWhiteM, [-0.05, 0.28 + planGrowth * 0.06, side * 0.1], [0.035, 0.035, 0.035]);
+      stalk.castShadow = false;
+    }
+  }
+  if (bodyPlans.has('chordate')) {
+    for (let i = 0; i < 4 + Math.floor(growthForPlan('chordate') * 3); i++) {
+      const x = -0.22 + i * 0.1;
+      mk(torso, GEO.sph, darkM, [x, ty + tr[1] * 0.8, 0], [0.025, 0.045, 0.045]);
+    }
+  }
+  if (bodyPlans.has('echinoderm')) {
+    const planGrowth = growthForPlan('echinoderm');
+    for (let i = 0; i < 5; i++) {
+      const x = -0.27 + i * 0.13, side = i % 2 ? 1 : -1;
+      mk(torso, GEO.sph, armorM, [x, ty + tr[1] * 0.74, 0], [0.075, 0.07, 0.2]);
+      spike(torso, boneM, [x, ty + tr[1] * 0.82, side * 0.04], 0.035, 0.13 + planGrowth * 0.1, [0, 0, 0.16]);
+    }
+  }
+  for (const plan of ['annelid', 'nematode', 'flatworm'].filter(id => bodyPlans.has(id))) {
+    const planGrowth = growthForPlan(plan);
+    const ringCount = plan === 'annelid' ? 4 + Math.floor(planGrowth * 5) : 3 + Math.floor(planGrowth * 3);
+    const ringMat = plan === 'flatworm' ? bodyM : armorM;
+    for (let i = 0; i < ringCount; i++) {
+      const x = -0.27 + i * (0.52 / Math.max(1, ringCount - 1));
+      const ring = mk(torso, GEO.torus, ringMat, [x, ty, 0], [0.15, plan === 'flatworm' ? 0.11 : 0.19, plan === 'flatworm' ? 0.25 : 0.28], [0, Math.PI / 2, 0]);
+      ring.castShadow = false;
+    }
+  }
   return rig;
 }
 
@@ -442,7 +504,7 @@ function setGlow(rig, hex, intensity) {
 }
 
 // --- sovražniki ---
-function buildEnemy(kind, bossType) {
+function buildEnemy(kind, bossType, evolution = 0, bosses = 0) {
   const mats = [];
   const M = (c, o) => { const m = stdMat(c, o); mats.push(m); return m; };
   const root = new THREE.Group(), model = new THREE.Group();
@@ -496,14 +558,15 @@ function buildEnemy(kind, bossType) {
     const shell = M('#596b74', { metalness: 0.35, roughness: 0.48 }), plate = M('#a9bac0'), under = M('#344b55');
     const weakM = glowMat('#ff4c3a', 1.8), weakRingM = glowMat('#ffd36a', 1.3);
     mk(model, GEO.sph, under, [-0.06, 0.29, 0], [0.61, 0.18, 0.28]);
-    for (let i = 0; i < 5; i++) {
-      const x = 0.28 - i * 0.17, y = 0.38 + Math.sin(i * 0.65) * 0.025;
+    const segmentCount = 5 + Math.min(3, Math.floor(evolution / 2));
+    for (let i = 0; i < segmentCount; i++) {
+      const x = 0.28 - i * 0.15, y = 0.38 + Math.sin(i * 0.65) * 0.025;
       const segment = new THREE.Group(); segment.position.set(x, y, 0); model.add(segment);
       mk(segment, GEO.sph, shell, [0, 0, 0], [0.19, 0.21, 0.25]);
       mk(segment, GEO.sph, plate, [-0.015, 0.075, 0], [0.16, 0.14, 0.23]);
       for (const side of [-1, 1]) mk(segment, GEO.sph, plate, [0, 0.01, side * 0.16], [0.13, 0.1, 0.09]);
       segment.userData.baseY = y; rig.segments.push(segment);
-      if (i < 4) spike(segment, shell, [-0.02, 0.16, 0], 0.04, 0.11, [0, 0, -0.12]);
+      if (i < segmentCount - 1) spike(segment, shell, [-0.02, 0.16, 0], 0.04, 0.11 + Math.min(0.06, evolution * 0.01), [0, 0, -0.12]);
     }
     const head = mk(model, GEO.sph, shell, [0.43, 0.39, 0], [0.21, 0.18, 0.2]);
     mk(model, GEO.sph, under, [0.55, 0.31, 0], [0.13, 0.055, 0.13]);
@@ -556,7 +619,7 @@ function buildEnemy(kind, bossType) {
       const wingPivot = new THREE.Group();
       wingPivot.position.set(-0.25, 0.55, side * 0.18);
       model.add(wingPivot);
-      const wing = wingShape(0.85, wingMat, belly);
+      const wing = wingShape(1.05, wingMat, belly);
       wing.rotation.set(side * -0.5, side * -1.05, 0.25);
       wingPivot.add(wing);
       wingPivot.userData.side = side;
@@ -568,6 +631,12 @@ function buildEnemy(kind, bossType) {
       mk(model, GEO.sph, bolt, [-0.1, 0.53, side * 0.34], [0.065, 0.065, 0.065]).castShadow = false;
     }
     for (let i = 0; i < 3; i++) spike(model, scale, [-0.32 - i * 0.12, 0.64 - i * 0.06, 0], 0.04, 0.22, [0, 0, 1.1]);
+    for (let i = 0; i < 5; i++) {
+      const x = -0.36 - i * 0.12, y = 0.43 - i * 0.035;
+      mk(model, GEO.sph, hide, [x, y, 0], [0.14 - i * 0.012, 0.12 - i * 0.01, 0.15 - i * 0.01]);
+      if (i < 4) spike(model, scale, [x - 0.04, y + 0.1, 0], 0.03, 0.17, [0, 0, 0.8]);
+    }
+    for (let i = 0; i < 3; i++) mk(model, GEO.sph, bolt, [-0.14 + i * 0.16, 0.38 - (i % 2) * 0.12, 0.31], [0.025, 0.1, 0.025], [0, 0, (i % 2 ? 1 : -1) * 0.4]).castShadow = false;
     rig.weakpoint = mk(model, GEO.sph, bolt, [-0.34, 0.39, 0], [0.1, 0.1, 0.1]);
   } else { // tiran
     const b = M('#8e2433'), d = M('#4a1018', { metalness: 0.5, roughness: 0.4 }), l = M('#c44a5a');
@@ -575,7 +644,11 @@ function buildEnemy(kind, bossType) {
     mk(model, GEO.sph, b, [0, 0.43, 0], [0.46, 0.36, 0.42]);
     mk(model, GEO.sph, l, [0.08, 0.3, 0], [0.39, 0.2, 0.36]);
     mk(model, GEO.sph, d, [0.28, 0.63, 0], [0.3, 0.2, 0.3]);
-    mk(model, GEO.sph, core, [0.38, 0.5, 0], [0.12, 0.15, 0.15]);
+    mk(model, GEO.sph, core, [0.38, 0.5, 0], [0.15, 0.18, 0.17]);
+    for (let i = 0; i < 3; i++) {
+      mk(model, GEO.sph, gold, [-0.12 + i * 0.16, 0.7, 0], [0.105, 0.07, 0.29]);
+      spike(model, gold, [-0.08 + i * 0.16, 0.79, 0], 0.035, 0.18 + (i === 1 ? 0.08 : 0), [0, 0, 0.08]);
+    }
     for (const side of [-1, 1]) {
       mk(model, GEO.sph, gold, [0.04, 0.66, side * 0.27], [0.25, 0.12, 0.16]);
       spike(model, M('#e8dcc8'), [0.16, 0.73, side * 0.18], 0.08, 0.46, [side * 0.4, 0, 0.55]);
@@ -588,6 +661,67 @@ function buildEnemy(kind, bossType) {
       rig.legs.push(p);
     }
     model.scale.setScalar(1.65);
+  }
+  if (kind === 'boss' && bossType === 'matriarch') {
+    const leaf = M('#75bd55'), bark = M('#735136'), bloom = M('#e993b7');
+    for (let i = 0; i < 5; i++) {
+      const side = i % 2 ? 1 : -1, row = Math.floor(i / 2);
+      const branch = new THREE.Group();
+      branch.position.set(-0.2 - row * 0.08, 0.55 + row * 0.08, side * 0.18);
+      branch.rotation.z = side * 0.6;
+      model.add(branch);
+      limb(branch, bark, 0.65 - row * 0.05, 0.045);
+      mk(branch, GEO.sph, leaf, [side * 0.16, -0.55, 0], [0.22, 0.1, 0.14], [0, 0, side * 0.4]);
+      mk(branch, GEO.sph, bloom, [side * 0.2, -0.62, 0.02], [0.07, 0.07, 0.07]).castShadow = false;
+    }
+    for (let i = 0; i < 4; i++) {
+      const angle = i * Math.PI / 2;
+      spike(model, bark, [-0.28, 0.22, Math.sin(angle) * 0.28], 0.035, 0.34, [Math.cos(angle) * 0.55, 0, 0.7]);
+    }
+  }
+  if (kind !== 'boss') {
+    const tier = Math.min(6, Math.max(0, evolution));
+    const bossGrowth = Math.min(5, Math.max(0, bosses));
+    rig.growthScale = 1 + tier * 0.035 + bossGrowth * 0.018;
+    model.scale.setScalar(rig.growthScale);
+    if (tier > 0) {
+      const shell = M('#53636b', { metalness: 0.24, roughness: 0.48 });
+      const plate = M('#b6c4bb');
+      if (kind === 'walker') {
+        for (let i = 0; i < 1 + tier; i++) {
+          const x = -0.2 + i * 0.09;
+          mk(model, GEO.sph, i % 2 ? shell : plate, [x, 0.55, 0], [0.085, 0.055, 0.19]);
+        }
+        for (let i = 0; i < Math.ceil(tier / 2); i++) spike(model, shell, [-0.18 + i * 0.12, 0.62, 0], 0.035, 0.12 + tier * 0.015);
+      } else if (kind === 'hopper') {
+        for (const side of [-1, 1]) {
+          mk(model, GEO.sph, shell, [-0.14, 0.36, side * 0.18], [0.18 + tier * 0.01, 0.16, 0.11]);
+          if (tier >= 2) spike(model, plate, [-0.2, 0.53, side * 0.1], 0.03, 0.14 + tier * 0.01, [side * 0.25, 0, -0.2]);
+        }
+      } else if (kind === 'spitter') {
+        if (rig.sac) rig.sac.scale.set(0.11 + tier * 0.012, 0.12 + tier * 0.015, 0.11 + tier * 0.012);
+        for (let i = 0; i < Math.ceil(tier / 2); i++) {
+          const side = i % 2 ? 1 : -1;
+          mk(model, GEO.sph, glowMat('#c8ee72', 0.6), [-0.2 - i * 0.04, 0.44 + i * 0.05, side * 0.2], [0.075, 0.07, 0.065]);
+        }
+      } else if (kind === 'armored' && tier >= 2) {
+        for (let i = 0; i < Math.floor(tier / 2); i++) {
+          const x = -0.5 - i * 0.14;
+          const segment = new THREE.Group(); segment.position.set(x, 0.38, 0); model.add(segment);
+          mk(segment, GEO.sph, shell, [0, 0, 0], [0.16, 0.2, 0.23]);
+          mk(segment, GEO.sph, plate, [-0.01, 0.07, 0], [0.14, 0.13, 0.21]);
+          segment.userData.baseY = 0.38; rig.segments.push(segment);
+          for (const side of [-1, 1]) {
+            const leg = new THREE.Group(); leg.position.set(x, 0.21, side * 0.17); model.add(leg);
+            limb(leg, shell, 0.15, 0.04); rig.legs.push(leg);
+          }
+        }
+      }
+    }
+    if (bossGrowth > 0) {
+      const crest = M('#d5c596', { metalness: 0.2 });
+      for (let i = 0; i < bossGrowth; i++) spike(model, crest, [-0.24 + i * 0.11, 0.57, 0], 0.025, 0.08 + bossGrowth * 0.015);
+    }
   }
   return rig;
 }
