@@ -537,6 +537,8 @@ function saveBest(done) {
 }
 let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [], choiceCool = 0, mouse = { x: -1, y: -1 };
 let synergyCards = [], pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
+const treeView = { x: 0, y: 0, zoom: 0.85 };
+let treeDrag = null, suppressTreeClick = false;
 const SAVE_KEY = 'evo-save-v1';
 
 function newPlayer() {
@@ -1127,9 +1129,13 @@ function drawTree() {
   ui.fillStyle = 'rgba(6,8,18,.96)'; ui.fillRect(0, 0, W, H);
   ui.textAlign = 'center'; ui.fillStyle = '#ffd54f'; ui.font = 'bold 30px monospace'; ui.fillText('RAZVOJNO DREVO', W / 2, 39);
   ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Od začetne sluzi se veje navzven; barva vozlišča označuje nišo, povezave pa pogoje za odklep.', W / 2, 62);
+  ui.fillText('Povleci za premik · kolešček za povečavo · barva označuje nišo · oblika razvojno smer.', W / 2, 62);
   treeNodeBoxes = [];
   const center = { x: W / 2, y: 270 };
+  ui.save();
+  ui.beginPath(); ui.rect(12, 72, W - 24, 408); ui.clip();
+  ui.translate(treeView.x, treeView.y);
+  ui.translate(center.x, center.y); ui.scale(treeView.zoom, treeView.zoom); ui.translate(-center.x, -center.y);
   const sector = { body: -Math.PI / 2, movement: 0, offense: Math.PI / 2, survival: Math.PI };
   const positions = new Map();
   const tiers = new Map();
@@ -1142,14 +1148,12 @@ function drawTree() {
     const [dimension, tierText] = key.split(':'), angle = sector[dimension], tier = Number(tierText);
     traits.forEach((trait, index) => {
       const lane = Math.floor(index / 4), count = Math.min(4, traits.length - lane * 4), slot = index % 4;
-      const radius = 44 + (tier - 1) * 40 + lane * 22;
+      const radius = 64 + (tier - 1) * 60 + lane * 34;
       const nodeAngle = angle + (slot - (count - 1) / 2) * 0.5;
       positions.set(trait.id, { trait, x: Math.cos(nodeAngle) * radius, y: Math.sin(nodeAngle) * radius });
     });
   }
-  const maxRadius = Math.max(...[...positions.values()].map(p => Math.hypot(p.x, p.y)));
-  const fit = Math.min(1, 195 / maxRadius);
-  for (const p of positions.values()) { p.x = center.x + p.x * fit; p.y = center.y + p.y * fit; }
+  for (const p of positions.values()) { p.x = center.x + p.x; p.y = center.y + p.y; }
   for (const trait of TRAITS) {
     const to = positions.get(trait.id);
     if (!to) continue;
@@ -1169,9 +1173,11 @@ function drawTree() {
       ui.stroke();
     }
   }
-  ui.beginPath(); ui.arc(center.x, center.y, 26, 0, Math.PI * 2);
+  ui.beginPath(); ui.arc(center.x, center.y, 38, 0, Math.PI * 2);
   ui.fillStyle = '#20273a'; ui.fill(); ui.strokeStyle = '#ffd54f'; ui.lineWidth = 2; ui.stroke();
-  ui.fillStyle = '#ffd54f'; ui.font = 'bold 11px monospace'; ui.textAlign = 'center'; ui.fillText('SLUZ', center.x, center.y + 4);
+  const identityLines = creatureIdentity(owned).split(' ');
+  ui.fillStyle = '#ffd54f'; ui.font = 'bold 9px monospace'; ui.textAlign = 'center';
+  identityLines.slice(0, 3).forEach((word, i) => ui.fillText(word, center.x, center.y + (i - (Math.min(identityLines.length, 3) - 1) / 2) * 11 + 3));
   const drawNodeIcon = (trait, x, y, radius, color) => {
     const boss = trait.boss, root = traitRequires(trait).length === 0;
     ui.beginPath();
@@ -1203,19 +1209,23 @@ function drawTree() {
   for (const { trait, x, y } of positions.values()) {
     const state = traitState(trait, owned), acquired = state === 'owned', unlocked = state === 'open';
     const color = NICHES[trait.niche].color;
-    drawNodeIcon(trait, x, y, 8.5, acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a');
+    drawNodeIcon(trait, x, y, 10, acquired ? '#9be15d' : unlocked ? color : state === 'blocked' ? '#523945' : '#252b3a');
     if (acquired) {
       ui.fillStyle = '#17301b'; ui.font = 'bold 9px monospace'; ui.fillText('✓', x, y + 3);
     }
-    treeNodeBoxes.push({ trait, x: x - 12, y: y - 12, w: 24, h: 24 });
+    const screenX = center.x + treeView.x + (x - center.x) * treeView.zoom;
+    const screenY = center.y + treeView.y + (y - center.y) * treeView.zoom;
+    const boxSize = 28 * treeView.zoom;
+    treeNodeBoxes.push({ trait, x: screenX - boxSize / 2, y: screenY - boxSize / 2, w: boxSize, h: boxSize });
   }
   for (const [dimension, angle] of Object.entries(sector)) {
-    const x = center.x + Math.cos(angle) * 226, y = clamp(center.y + Math.sin(angle) * 226, 82, 468);
+    const x = center.x + Math.cos(angle) * 320, y = center.y + Math.sin(angle) * 320;
     ui.fillStyle = DIMENSIONS[dimension].color; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
     ui.fillText(DIMENSIONS[dimension].short.toUpperCase(), x, y);
   }
+  ui.restore();
   ui.fillStyle = '#c8d0e8'; ui.font = '12px monospace';
-  ui.fillText('Oblika označuje smer vozlišča · začetna lastnost: šestkotnik · boj: trikotnik · šef: zvezda', W / 2, 488);
+  ui.fillText('Sredina: glavna specializacija · šestkotnik: začetek · romb: gibanje · kvadrat: preživetje · trikotnik: boj · zvezda: šef', W / 2, 488);
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
   ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
@@ -1233,7 +1243,7 @@ function drawTree() {
     wrap('Pogoji: ' + (requirements.length ? requirements.join(' + ') : 'začetna prilagoditev'), tipW - 24).slice(0, 2)
       .forEach((line, i) => ui.fillText(line, x + 12, y + 98 + i * 15));
     const exclusions = treeHoverTrait.excludes || [];
-    wrap('Nezdružljivo: ' + (exclusions.length ? exclusions.map(id => TRAIT_BY_ID[id].name).join(', ') : 'nič'), tipW - 24).slice(0, 1)
+    wrap(exclusions.length ? 'Nezdružljivo z: ' + exclusions.map(id => TRAIT_BY_ID[id].name).join(', ') : 'Brez nezdružljivih lastnosti', tipW - 24).slice(0, 1)
       .forEach((line, i) => ui.fillText(line, x + 12, y + 135 + i * 15));
     ui.textAlign = 'center';
   }
@@ -1340,6 +1350,12 @@ uic.addEventListener('pointerdown', e => {
   if (mode === 'choose' && e.button === 0) {
     choiceDrag = { pointerId: e.pointerId, startX: e.clientX, lastX: e.clientX, moved: false };
     uic.setPointerCapture(e.pointerId);
+  } else if (mode === 'tree' && e.button === 0) {
+    const r = uic.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+    if (x >= 12 && x <= W - 12 && y >= 72 && y <= 480) {
+      treeDrag = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, x: treeView.x, y: treeView.y, moved: false };
+      uic.setPointerCapture(e.pointerId);
+    }
   } else if (mode === 'play' && e.button === 0) pressed.MouseLeft = true;
   else if (mode === 'play' && e.button === 2) { e.preventDefault(); pressed.MouseRight = true; }
 });
@@ -1351,6 +1367,13 @@ uic.addEventListener('pointermove', e => {
     if (Math.abs(e.clientX - choiceDrag.startX) > 4) choiceDrag.moved = true;
     if (choiceDrag.moved) choiceModelRotation += dx / r.width * Math.PI * 2;
     choiceDrag.lastX = e.clientX;
+  }
+  if (treeDrag && treeDrag.pointerId === e.pointerId) {
+    if (Math.hypot(e.clientX - treeDrag.startX, e.clientY - treeDrag.startY) > 4) treeDrag.moved = true;
+    if (treeDrag.moved) {
+      treeView.x = treeDrag.x + (e.clientX - treeDrag.startX) * W / r.width;
+      treeView.y = treeDrag.y + (e.clientY - treeDrag.startY) * H / r.height;
+    }
   }
   pauseHover = mode === 'pause' && mouse.x >= 315 && mouse.x <= 645
     ? [108, 146, 184, 222].findIndex(y => mouse.y >= y && mouse.y <= y + 36) : -1;
@@ -1364,16 +1387,36 @@ uic.addEventListener('pointermove', e => {
     : null;
 });
 uic.addEventListener('pointerup', e => {
-  if (!choiceDrag || choiceDrag.pointerId !== e.pointerId) return;
-  suppressChoiceClick = choiceDrag.moved;
-  choiceDrag = null;
+  if (choiceDrag && choiceDrag.pointerId === e.pointerId) {
+    suppressChoiceClick = choiceDrag.moved;
+    choiceDrag = null;
+  }
+  if (treeDrag && treeDrag.pointerId === e.pointerId) {
+    suppressTreeClick = treeDrag.moved;
+    treeDrag = null;
+  }
 });
 uic.addEventListener('pointercancel', e => {
   if (choiceDrag && choiceDrag.pointerId === e.pointerId) choiceDrag = null;
+  if (treeDrag && treeDrag.pointerId === e.pointerId) treeDrag = null;
 });
+uic.addEventListener('wheel', e => {
+  if (mode !== 'tree') return;
+  e.preventDefault();
+  const r = uic.getBoundingClientRect();
+  mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
+  const center = { x: W / 2, y: 270 }, oldZoom = treeView.zoom;
+  const nextZoom = clamp(oldZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.55, 2.4);
+  const localX = center.x + (mouse.x - center.x - treeView.x) / oldZoom;
+  const localY = center.y + (mouse.y - center.y - treeView.y) / oldZoom;
+  treeView.zoom = nextZoom;
+  treeView.x = mouse.x - center.x - (localX - center.x) * nextZoom;
+  treeView.y = mouse.y - center.y - (localY - center.y) * nextZoom;
+}, { passive: false });
 uic.addEventListener('contextmenu', e => e.preventDefault());
 uic.addEventListener('click', e => {
   if (suppressChoiceClick) { suppressChoiceClick = false; return; }
+  if (suppressTreeClick) { suppressTreeClick = false; return; }
   const r = uic.getBoundingClientRect();
   mouse.x = (e.clientX - r.left) * W / r.width; mouse.y = (e.clientY - r.top) * H / r.height;
   if (mode === 'menu') {
@@ -1499,7 +1542,7 @@ let camX = 12, camY = 7, camZ = 20, lookX = 12, lookY = 6.9;
 function updateCamera(dt, t) {
   const pcx = wx(player.x + player.w / 2), pcy = wy(player.y + player.h / 2);
   let tx, ty, tz, lx, ly;
-  if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 1.35; }
+  if (showcase()) { tx = pcx; ty = pcy + 0.2; tz = 6.3; lx = pcx; ly = pcy - 0.5; }
   else { tx = clamp(pcx, 12, WORLD_W / 40 - 12); ty = 6.9 + (pcy - 6.9) * 0.08; tz = 20; lx = tx; ly = ty; }
   const k = Math.min(1, dt * (showcase() ? 3 : 4));
   camX += (tx - camX) * k; camY += (ty - camY) * k; camZ += (tz - camZ) * k; lookX += (lx - lookX) * k; lookY += (ly - lookY) * k;
@@ -1632,7 +1675,7 @@ function drawChoose() {
     ui.font = '12px monospace';
     y = Math.max(y + 4, r.y + 118);
     const hs = generic || t.boss ? [] : hintsSyn(t, owned);
-    const opens = generic || t.boss ? [] : opensWhat(t), closes = generic ? [] : closesWhat(t, owned);
+    const opens = generic || t.boss ? [] : opensWhat(t, owned), closes = generic ? [] : closesWhat(t, owned);
     ui.fillStyle = '#9fd3ff';
     wrap(opens.length ? '▶ Povezave: ' + opens.join(', ') : generic || t.boss ? '' : '▶ Konec razvojne poti', r.w - 20).slice(0, 2).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; });
     if (hs.length) { ui.fillStyle = NICHES.syn.color; wrap('★ Omogoči sinergijo: ' + hs.join(', '), r.w - 20).slice(0, 1).forEach(l => { ui.fillText(l, r.x + 10, y); y += 14; }); }
@@ -1679,6 +1722,9 @@ function frame(now) {
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
   else if (mode === 'synergy') drawSynergyCard();
+  uic.style.cursor = mode === 'tree' ? (treeDrag ? 'grabbing' : 'grab')
+    : mode === 'choose' ? (choiceDrag ? 'grabbing' : choice && choice.hover >= 0 ? 'pointer' : 'grab')
+      : mode === 'play' ? 'crosshair' : 'default';
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);
 }

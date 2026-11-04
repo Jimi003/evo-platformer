@@ -1,6 +1,7 @@
 'use strict';
 const GEO = {
   sph: new THREE.IcosahedronGeometry(1, 1),
+  creatureBody: new THREE.SphereGeometry(1, 18, 14),
   ico: new THREE.IcosahedronGeometry(1, 0),
   cone: new THREE.ConeGeometry(1, 1, 6),
   cyl: new THREE.CylinderGeometry(1, 1, 1, 7),
@@ -85,7 +86,8 @@ function buildCreature(owned) {
   const col = creatureColors(owned);
   const mats = [];
   const M = (c, o) => { const m = stdMat(c, o); mats.push(m); return m; };
-  const bodyM = M(col.body), bellyM = M(col.belly), darkM = M(col.dark), boneM = M('#f3ecd8'), armorM = M(col.armor, { roughness: 0.4, metalness: 0.5 });
+  const bodyM = M(col.body, { flatShading: false, roughness: 0.52 }), bellyM = M(col.belly, { flatShading: false, roughness: 0.52 });
+  const darkM = M(col.dark), boneM = M('#f3ecd8'), armorM = M(col.armor, { roughness: 0.4, metalness: 0.5 });
   const featherM = M('#eef2ff');
   const accM = glowMat(col.accent, 0.35);
   const goldM = glowMat('#ffcc33', 0.5);
@@ -98,16 +100,17 @@ function buildCreature(owned) {
   const invest = nicheInvest(owned);
   const swiftGrowth = Math.min(1, invest.swift / 8), predatorGrowth = Math.min(1, invest.predator / 8);
   const venomGrowth = Math.min(1, invest.venom / 8), airGrowth = Math.min(1, invest.air / 8);
-  const headOn = nTraits >= 3;
+  const headGrowth = Math.min(1, Math.max(0, nTraits - 1) / 7);
   const tall = has('legs'), quad = has('horns') && !has('claws');
-  const stub = ['hide', 'roots', 'feathers', 'alpha'].some(has);
-  const legsOn = tall || stub || quad;
+  const legsOn = tall || has('roots') || has('alpha') || quad;
   const armsOn = ['claws', 'tentacle', 'vines'].some(has);
-  const tailOn = ['fangs', 'tail', 'fins', 'camo'].some(has) || (has('flyer') && airGrowth >= 0.35);
-  const bulk = has('bulk') ? 1.12 : 1, thick = has('hide') ? 1.1 : 1, fatK = has('fat') ? 1.25 : 1;
+  const tailOn = ['tail', 'fins', 'flyer'].some(has);
+  const defenseGrowth = Math.min(1, invest.bulwark / 8);
+  const bulk = 1 + defenseGrowth * 0.08 + (has('bulk') ? 0.06 : 0);
+  const thick = 1 + defenseGrowth * 0.06, fatK = 1 + defenseGrowth * 0.1 + (has('fat') ? 0.08 : 0);
   const L = legsOn ? (tall ? 0.12 + swiftGrowth * 0.34 : 0.1 + swiftGrowth * 0.16) + (has('sprint') ? 0.04 : 0) : 0;
-  const tr = headOn ? [0.27, 0.31, 0.24] : [0.37, 0.34, 0.34];
-  const ty = L + (headOn ? 0.3 : 0.34);
+  const tr = [0.37 - headGrowth * 0.1, 0.34 - headGrowth * 0.03, 0.34 - headGrowth * 0.1];
+  const ty = L + 0.34 - headGrowth * 0.025;
   model.scale.setScalar(0.95 * bulk);
 
   // noge (skupine obstajajo vedno zaradi animacije, mreže le če imaš noge)
@@ -120,7 +123,7 @@ function buildCreature(owned) {
     if (legsOn) {
       limb(hip, bodyM, L, has('hops') ? 0.095 : quad ? 0.085 : 0.075);
       if (has('hops') || has('pounce')) mk(hip, GEO.sph, bodyM, [0.02, -L * 0.2, 0], [0.13, 0.15, 0.1]);
-      mk(hip, GEO.box, darkM, [0.07, -L + 0.02, 0], [0.22, 0.06, 0.13]);
+      mk(hip, GEO.sph, darkM, [0.07, -L + 0.02, 0], [0.13, 0.06, 0.085]);
       const toes = has('pounce') || has('alpha') ? 3 : has('claws') ? 2 : 0;
       for (let i = 0; i < toes; i++) spike(hip, boneM, [0.17, -L + 0.03, (i - (toes - 1) / 2) * 0.045], 0.022, has('pounce') ? 0.13 : 0.08, [0, 0, -1.6]);
     }
@@ -128,7 +131,8 @@ function buildCreature(owned) {
   }
 
   // rep
-  const segs = tailOn ? 3 + Math.floor(swiftGrowth * 4) + (has('tail') ? 2 : 0) + (has('sprint') ? 1 : 0) : 0, segLen = 0.15 + swiftGrowth * 0.04;
+  const segs = tailOn ? 1 + Math.floor(swiftGrowth * 4) + (has('tail') ? 1 : 0) + (has('sprint') ? 1 : 0) : 0;
+  const segLen = 0.12 + swiftGrowth * 0.07;
   let tp = model, tpos = [-0.2, L + 0.2, 0];
   for (let i = 0; i < segs; i++) {
     const piv = new THREE.Group();
@@ -151,9 +155,9 @@ function buildCreature(owned) {
   const torso = new THREE.Group();
   model.add(torso);
   rig.torso = torso;
-  mk(torso, GEO.sph, bodyM, [0, ty, 0], [tr[0] * thick, tr[1] * thick, tr[2] * thick], [0, 0, headOn ? -0.15 : 0]);
-  mk(torso, GEO.sph, bellyM, [0.1, ty - 0.05, 0], [0.2 * fatK * (headOn ? 1 : 1.3), 0.24 * fatK * (headOn ? 1 : 1.1), 0.2 * fatK * (headOn ? 1 : 1.3)], [0, 0, -0.15]);
-  if (!legsOn) mk(torso, GEO.sph, bodyM, [0, ty - 0.27, 0], [0.4, 0.1, 0.36]);
+  mk(torso, GEO.creatureBody, bodyM, [0, ty, 0], [tr[0] * thick, tr[1] * thick, tr[2] * thick], [0, 0, -headGrowth * 0.15]);
+  mk(torso, GEO.creatureBody, bellyM, [0.1, ty - 0.05, 0], [0.17 * fatK, 0.19 * fatK, 0.17 * fatK], [0, 0, -0.15]);
+  if (!legsOn) mk(torso, GEO.creatureBody, bodyM, [0, ty - 0.26, 0], [0.31, 0.07, 0.29]);
   mk(torso, GEO.sph, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.45 }), [-0.08, ty + tr[1] * 0.72, 0.12], [0.07, 0.04, 0.05], [0, 0, 0.3]).castShadow = false;
   if (has('camo')) for (const side of [-1, 1]) for (let i = 0; i < 3; i++) mk(torso, GEO.sph, darkM, [-0.12 + i * 0.1, ty + 0.05 - i * 0.02, side * 0.2], [0.03, 0.16, 0.05], [0, 0, -0.2]);
   if (has('bulk')) for (const side of [-1, 1]) mk(torso, GEO.sph, armorM, [0.05, ty + 0.25, side * 0.25], [0.12, 0.09, 0.1]);
@@ -162,7 +166,7 @@ function buildCreature(owned) {
     spike(torso, glowMat('#ffd24a', 1.1), [0.2, ty - 0.02, side * 0.29], 0.025, 0.18, [side * 0.6, 0, -1.1]);
   }
   // hrbet: bodice, oklep, školjka, kužni mehurji
-  if (has('carapace')) for (let i = 0; i < 4; i++) mk(torso, GEO.sph, armorM, [-0.2 - Math.sin(i * 0.5) * 0.04, ty + 0.2 - i * 0.12, 0], [0.08, 0.1, 0.22 - i * 0.015], [0, 0, 0.25]);
+  if (has('carapace')) for (let i = 0; i < 1 + Math.floor(defenseGrowth * 4); i++) mk(torso, GEO.sph, armorM, [-0.2 - Math.sin(i * 0.5) * 0.04, ty + 0.2 - i * 0.12, 0], [0.08, 0.1, 0.22 - i * 0.015], [0, 0, 0.25]);
   if (has('shell')) mk(torso, GEO.sph, armorM, [-0.16, ty + 0.02, 0], [0.18, 0.36, 0.3], [0, 0, 0.15]);
   if (has('spikes')) for (let i = 0; i < (has('barbed') ? 6 : 4); i++) spike(torso, boneM, [-0.18 - i * 0.005, ty + 0.3 - i * 0.1, i % 2 ? 0.08 : -0.08], 0.04, has('barbed') ? 0.22 : 0.13, [0, 0, 1.2]);
   if (has('plague')) for (let i = 0; i < 4; i++) mk(torso, GEO.sph, glowMat('#9be15d', 0.5), [-0.22, ty + 0.15 - i * 0.1, (i % 2 ? 1 : -1) * 0.1], [0.06, 0.06, 0.06]);
@@ -180,11 +184,11 @@ function buildCreature(owned) {
   rig.arms = [];
   for (const side of [-1, 1]) {
     const piv = new THREE.Group();
-    piv.position.set(0.06, ty + 0.1, side * (headOn ? 0.25 : 0.33) * thick);
+    piv.position.set(0.06, ty + 0.1, side * (0.33 - headGrowth * 0.06) * thick);
     torso.add(piv);
     if (armsOn) {
-      const armLen = 0.28 + predatorGrowth * 0.2;
-      const ar = 0.055 * (has('claws') ? 1.15 : 1) * (has('frenzy') ? 1.2 : 1) * (has('bulk') ? 1.15 : 1);
+      const armLen = 0.16 + predatorGrowth * 0.3;
+      const ar = (0.045 + predatorGrowth * 0.02) * (has('claws') ? 1.1 : 1) * (has('frenzy') ? 1.1 : 1) * (has('bulk') ? 1.08 : 1);
       const leafM = M('#3fae4f'), armM = has('vines') && !has('claws') ? leafM : bodyM;
       limb(piv, armM, armLen, ar);
       mk(piv, GEO.sph, darkM, [0, -armLen, 0], [has('rending') ? 0.11 : 0.085, 0.085, 0.085]);
@@ -206,13 +210,14 @@ function buildCreature(owned) {
 
   // glava (pri slimeu le izboklina z obrazom)
   const head = new THREE.Group();
-  head.position.set(0.2, ty + (headOn ? 0.38 : 0.13), 0);
+  head.position.set(0.2, ty + 0.13 + headGrowth * 0.25, 0);
   torso.add(head);
   rig.head = head;
-  const hs = has('apex') ? 1.15 : 1;
+  const hs = (0.88 + headGrowth * 0.12) * (has('apex') ? 1.1 : 1);
   head.scale.setScalar(hs);
-  mk(head, GEO.sph, bodyM, [0, 0, 0], [0.2, 0.19, 0.19]);
-  mk(head, GEO.sph, bellyM, [0.17, -0.05, 0], [0.17, 0.09, 0.11]);
+  mk(head, GEO.creatureBody, bodyM, [0, 0, 0], [0.2, 0.19, 0.19]);
+  mk(head, GEO.creatureBody, bellyM, [0.17, -0.05, 0], [0.17, 0.09, 0.11]);
+  mk(head, GEO.creatureBody, darkM, [0.22, -0.105, 0], [0.055, 0.014, 0.035]);
   const eyeBase = has('frenzy') ? glowMat('#ff2a2a', 1.2) : has('ambush') ? glowMat('#ffe14a', 0.9) : null;
   for (const side of [-1, 1]) {
     mk(head, GEO.sph, eyeBase || stdMat('#ffffff'), [0.1, 0.05, side * 0.11], [0.06, 0.06, 0.06]);
@@ -290,7 +295,7 @@ function buildCreature(owned) {
   if (has('canopy')) for (let i = 0; i < 3; i++) mk(torso, GEO.sph, leafG, [-0.05 + (i - 1) * 0.12, ty + tr[1] * 0.95 + 0.12 + (i === 1 ? 0.06 : 0), (i - 1) * 0.1], [0.17, 0.09, 0.17]);
   if (has('treant')) for (let i = 0; i < 5; i++) mk(torso, GEO.sph, barkM, [0.0 + (i % 2) * 0.1, ty + 0.2 - i * 0.1, (i % 2 ? 1 : -1) * (tr[2] * 0.85)], [0.07, 0.07, 0.05]);
   if (has('bloomburst')) { for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; soft(mk(torso, GEO.sph, petalM, [-tr[0] * 0.9, ty + 0.05 + Math.cos(a) * 0.12, Math.sin(a) * 0.12], [0.04, 0.07, 0.07])); } soft(mk(torso, GEO.sph, goldM, [-tr[0] * 0.95, ty + 0.05, 0], [0.04, 0.05, 0.05])); }
-  if (has('feathers')) for (let i = 0; i < 4 + Math.floor(airGrowth * 6); i++) spike(torso, featherM, [-tr[0] * 0.85, ty + 0.2 - i * 0.075, (i - 2) * 0.045], 0.04, 0.18 + airGrowth * 0.08, [0, 0, 1.9]);
+  if (has('feathers')) for (let i = 0; i < 2 + Math.floor(airGrowth * 5); i++) spike(torso, featherM, [-tr[0] * 0.85, ty + 0.2 - i * 0.075, (i - 1) * 0.045], 0.035, 0.12 + airGrowth * 0.12, [0, 0, 1.9]);
   rig.sparks = [];
   if (has('static')) for (let i = 0; i < 4; i++) { const m = soft(mk(torso, GEO.sph, sparkM, [0.02 - i * 0.06, ty + 0.15 - (i % 2) * 0.18, (i % 2 ? 1 : -1) * (tr[2] * 0.95)], [0.03, 0.03, 0.03])); rig.sparks.push(m); }
   if (has('conduct')) { mk(head, GEO.cyl, M('#cfd6ff'), [0, 0.28, 0], [0.012, 0.2, 0.012]); rig.sparks.push(soft(mk(head, GEO.sph, sparkM, [0, 0.48, 0], [0.05, 0.05, 0.05]))); }
@@ -306,7 +311,7 @@ function buildCreature(owned) {
   // krila
   rig.wings = [];
   if (has('wings') || has('thermals')) {
-    const size = has('flyer') ? 1.0 + airGrowth * 0.25 : has('wings') ? 0.72 + airGrowth * 0.25 : 0.5 + airGrowth * 0.2;
+    const size = has('flyer') ? 0.72 + airGrowth * 0.48 : has('wings') ? 0.35 + airGrowth * 0.82 : 0.28 + airGrowth * 0.65;
     const wm = new THREE.MeshStandardMaterial({ color: col.accent, side: THREE.DoubleSide, transparent: true, opacity: 0.82, flatShading: true, roughness: 0.6 });
     for (const side of [-1, 1]) {
       const piv = new THREE.Group();
