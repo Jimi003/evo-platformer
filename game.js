@@ -236,28 +236,57 @@ function buildRoomScene() {
   const supportNiche = dominantNiche(owned);
   const treeAnchored = ['land', 'air', 'swift'].includes(supportNiche);
   const cliffM = M(th.far2), cliffLightM = M(th.far3);
+  const supportPlatforms = platforms.filter(p => !p.rock && p.y < 500);
+  const groundLevel = wy(500), maxPlatformHeight = supportPlatforms.length
+    ? Math.max(...supportPlatforms.map(p => wy(p.y))) : groundLevel + 4;
+  const mainTrunkX = WORLD_W / 80;
+  if (treeAnchored) {
+    const trunkHeight = maxPlatformHeight - groundLevel + 1.2;
+    mk(roomGroup, GEO.taper, trunkM, [mainTrunkX, groundLevel + trunkHeight / 2, -3.2],
+      [0.46, trunkHeight, 0.42]).castShadow = false;
+    mk(roomGroup, GEO.taper, trunkM, [mainTrunkX + 0.2, groundLevel + trunkHeight * 0.48, -3.35],
+      [0.27, trunkHeight * 0.72, 0.24], [0, 0, -0.035]).castShadow = false;
+  } else {
+    const wallHeight = maxPlatformHeight - groundLevel + 1.1;
+    const wallMid = groundLevel + wallHeight / 2;
+    for (let i = 0; i < 13; i++) {
+      const x = -1 + i * (WORLD_W / 40 + 2) / 12;
+      const width = 2.5 + (i % 3) * 0.45, offset = (i % 2) * 0.18;
+      mk(roomGroup, GEO.ico, i % 2 ? cliffM : cliffLightM,
+        [x, wallMid + (i % 3 - 1) * 0.18, -3.2 + offset],
+        [width, wallHeight * (0.51 + (i % 3) * 0.035), 0.58], [0.04 * (i % 2), i * 0.14, 0.015]).castShadow = false;
+    }
+  }
   platforms.forEach(p => {
     if (p.rock || p.y >= 500) return;
     const cx = (p.x + p.w / 2) / 40, top = wy(p.y), ground = wy(500);
     const height = ground - top, side = p.seed < 0.5 ? -1 : 1;
     if (treeAnchored) {
-      const trunkX = cx + side * Math.min(p.w / 40 * 0.28, 0.72);
-      mk(roomGroup, GEO.taper, trunkM, [trunkX, (top + ground) / 2, -2.8],
-        [0.24 + p.seed * 0.12, height * 0.58, 0.24 + p.seed * 0.1], [0, 0, side * 0.025]).castShadow = false;
-      mk(roomGroup, GEO.taper, trunkM, [cx, top - 0.22, -2.45],
-        [0.09, p.w / 40 * 0.37, 0.09], [0, 0, -side * 0.82]).castShadow = false;
-      for (let leaf = 0; leaf < 3; leaf++) {
-        mk(roomGroup, GEO.sph, leaf % 2 ? treeM : topM,
-          [trunkX + (leaf - 1) * 0.24, top - 0.28 - (leaf % 2) * 0.12, -2.65],
-          [0.42, 0.28, 0.42]).castShadow = false;
+      const endX = cx - mainTrunkX, branchStartY = top + 0.35, branchEndY = top - 0.18;
+      const endY = branchEndY - branchStartY;
+      const branchLength = Math.max(0.35, Math.hypot(endX, endY));
+      const branchAngle = Math.atan2(-endX, endY);
+      mk(roomGroup, GEO.taper, trunkM, [(mainTrunkX + cx) / 2, (branchStartY + branchEndY) / 2, -2.95],
+        [0.12 + p.seed * 0.035, branchLength, 0.13], [0, 0, branchAngle]).castShadow = false;
+      for (const twigSide of [-1, 1]) {
+        const twigX = cx + twigSide * Math.min(p.w / 40 * 0.38, 0.9);
+        const twig = mk(roomGroup, GEO.taper, trunkM, [(cx + twigX) / 2, top + 0.04, -2.72],
+          [0.035, Math.max(0.3, Math.abs(twigX - cx) * 1.3), 0.035], [0, 0, twigSide * -0.7]);
+        twig.castShadow = false;
+        for (let leaf = 0; leaf < 3; leaf++) {
+          mk(roomGroup, GEO.sph, leaf % 2 ? treeM : topM,
+            [twigX + (leaf - 1) * 0.12, top + 0.18 + (leaf % 2) * 0.12, -2.58 + leaf * 0.04],
+            [0.18, 0.11, 0.12]).castShadow = false;
+        }
       }
     } else {
-      mk(roomGroup, GEO.ico, cliffM, [cx + side * 0.12, (top + ground) / 2, -2.8],
-        [p.w / 40 * 0.52, height * 0.58, 0.46], [p.seed * 0.3, p.seed * 2, 0]).receiveShadow = true;
-      mk(roomGroup, GEO.ico, cliffLightM, [cx - side * p.w / 40 * 0.22, (top + ground) / 2, -2.4],
-        [p.w / 40 * 0.3, height * 0.42, 0.28], [0.1, p.seed * 3, 0]).castShadow = false;
-      mk(roomGroup, GEO.box, cliffLightM, [cx, top - 0.08, -2.15],
-        [p.w / 40 * 1.05, 0.17, 1.1]).castShadow = false;
+      const ledgeWidth = p.w / 40 * 0.86;
+      mk(roomGroup, GEO.ico, cliffM, [cx, top - 0.26, -2.85],
+        [ledgeWidth * 0.62, 0.48 + p.seed * 0.12, 0.5], [p.seed * 0.18, p.seed * 1.5, 0.02]).receiveShadow = true;
+      mk(roomGroup, GEO.ico, cliffLightM, [cx + side * ledgeWidth * 0.19, top - 0.2, -2.47],
+        [ledgeWidth * 0.34, 0.35, 0.34], [0.08, p.seed * 2, 0.02]).castShadow = false;
+      mk(roomGroup, GEO.box, cliffLightM, [cx, top - 0.08, -2.18],
+        [ledgeWidth, 0.16, 0.9]).castShadow = false;
     }
   });
   platforms.forEach((p, i) => {
@@ -414,7 +443,7 @@ function addBackgroundBirds() {
       const type = Math.floor(Math.random() * 3);
       const body = mk(bird, GEO.sph, material, [0, 0, 0], type === 1 ? [0.17, 0.04, 0.04] : type === 2 ? [0.11, 0.055, 0.05] : [0.12, 0.045, 0.04]);
       body.castShadow = false;
-      mk(bird, GEO.cone, material, [0.12, 0, 0], [0.035, 0.12, 0.035], [0, 0, Math.PI / 2]).castShadow = false;
+      mk(bird, GEO.cone, material, [0.13, 0, 0], [0.035, 0.12, 0.035], [0, 0, -Math.PI / 2]).castShadow = false;
       const wings = [];
       for (const side of [-1, 1]) {
         const wing = new THREE.Group();
@@ -428,7 +457,7 @@ function addBackgroundBirds() {
       if (type === 2) mk(bird, GEO.cone, material, [-0.13, 0, 0], [0.04, 0.15, 0.04], [0, 0, -Math.PI / 2]).castShadow = false;
       const scale = rand(1.2, 1.9);
       bird.scale.setScalar(scale);
-      bird.rotation.y = direction > 0 ? Math.PI : 0;
+      bird.rotation.y = direction < 0 ? Math.PI : 0;
       bird.position.set(startX - direction * i * rand(0.45, 0.9), y + rand(-0.45, 0.45), z + rand(-1.5, 1.5));
       bird.userData = { speed: speed * rand(0.88, 1.12), phase: rand(0, Math.PI * 2), wings, direction };
       roomGroup.add(bird);
@@ -514,10 +543,17 @@ function addWetScenery(th, M) {
   const river = mk(roomGroup, waterGeo, waterMat, [wetLevel.riverX, wy(500) + 0.045, -8], [3.8, 30, 1], [-Math.PI / 2, 0, 0]);
   river.castShadow = false;
   for (const [index, p] of platforms.entries()) {
-    if (p.rock || p.y >= 500 || index % 2 !== 0) continue;
+    if (p.rock || p.y >= 500) continue;
     const cx = (p.x + p.w / 2) / 40, top = wy(p.y), width = p.w / 40 * 0.72;
-    const stream = mk(roomGroup, waterGeo, waterMat, [cx, top + 0.065, 1.57], [width, 0.19, 1]);
+    const stream = mk(roomGroup, waterGeo, waterMat, [cx, top + 0.065, 1.57], [width, 0.22, 1]);
     stream.castShadow = false;
+    const foamMat = new THREE.MeshBasicMaterial({ color: '#d8fbff', transparent: true, opacity: 0.52, depthWrite: false });
+    roomMats.push(foamMat);
+    for (let streak = 0; streak < 3; streak++) {
+      const foamX = cx + rand(-width * 0.36, width * 0.36);
+      mk(roomGroup, GEO.box, foamMat, [foamX, top + 0.075 + streak * 0.018, 1.62],
+        [rand(0.12, 0.34), 0.018, 0.018]).castShadow = false;
+    }
     const lower = platforms.filter(q => !q.rock && q.y > p.y + 30).sort((a, b) => a.y - b.y)[0];
     if (lower) {
       const edgeX = cx + (p.seed < 0.5 ? -1 : 1) * p.w / 40 * 0.34;
@@ -680,6 +716,8 @@ let shake = 0, hitstop = 0, toastT = 0, toastText = '', choice = null, queue = [
 let synergyCards = [], pauseHover = -1, pauseSynHover = -1, treeHoverTrait = null, treeNodeBoxes = [];
 const treeView = { yaw: -0.24, pitch: 0.22, distance: 30 };
 let treeDrag = null, suppressTreeClick = false;
+let treeReturnMode = 'pause';
+function openEvolutionTree(returnMode) { treeReturnMode = returnMode; mode = 'tree'; }
 const SAVE_KEY = 'evo-save-v2';
 try { localStorage.removeItem('evo-save-v1'); } catch (e) { /* rekord ostane ohranjen */ }
 
@@ -849,7 +887,7 @@ function startRoom() {
   }
   const isBoss = room % 5 === 0;
   if (isBoss) spawnEnemy('boss', WORLD_W - 240, 300, bossTypeForRoom(room));
-  const count = isBoss ? 2 : 2 + room;
+  const count = isBoss ? 2 : 3 + Math.floor((room - 1) / 3);
   for (let i = 0; i < count; i++) {
     const kinds = ['walker'];
     if (room >= 2) kinds.push('hopper', 'spitter');
@@ -1517,7 +1555,7 @@ function buildEvolutionTree() {
     const position = direction.clone().multiplyScalar(2.35);
     hubPositions.set(niche, position);
     const locked = niche !== 'boss' && !selectedNiches.includes(niche)
-      && (evolutionPath.founderPicks >= 3 || selectedNiches.length >= 3
+      && (selectedNiches.length >= 3
         || selectedNiches.some(existing => nichesConflict(existing, niche))
         || (evolutionPath.founderPicks < 2 && ['fire', 'venom'].includes(niche)));
     nicheLocked.set(niche, locked);
@@ -1630,9 +1668,9 @@ function drawTree() {
   ui.fillStyle = '#f2f4ff'; ui.font = 'bold 13px monospace';
   ui.fillText(selectedNiches.length ? `IZBRANE NIŠE: ${selectedNiches.map(niche => NICHES[niche].name).join(' · ')}` : 'IZBERI PRVO PRILAGODITEV', W / 2, 101);
   ui.fillStyle = '#c8d0e8'; ui.font = '11px monospace';
-  const focus = evolutionPath.founderPicks < 3
-    ? `Ustanovitvene izbire: ${evolutionPath.founderPicks}/3 · do tri združljive niše`
-    : 'Ustanovitvene izbire zaključene · druge niše so zaklenjene';
+  const focus = selectedNiches.length < 3
+    ? `Izbrane niše: ${selectedNiches.length}/3 · druge združljive smeri ostanejo na voljo`
+    : 'Tri niše so izbrane · druge niše so zaklenjene';
   ui.fillText(focus, W / 2, 118);
   ui.fillStyle = '#e8d99a'; ui.font = '11px monospace';
   ui.fillText(`Tvoja oblika: ${creatureIdentity(owned, evolutionPath)}`, W / 2, 143);
@@ -1640,7 +1678,8 @@ function drawTree() {
   ui.fillText('Krogla: telesni načrt · oktaeder: gibanje · tetraeder: boj · kocka: preživetje · ikosaeder: začetek · dodekaeder: šef', W / 2, 482);
   ui.textAlign = 'center'; ui.fillStyle = '#7fd8ff'; ui.fillRect(386, 494, 188, 30);
   ui.strokeStyle = '#7fd8ff'; ui.strokeRect(386, 494, 188, 30);
-  ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace'; ui.fillText('NAZAJ NA PREMOR (Esc)', 480, 513);
+  ui.fillStyle = '#10121c'; ui.font = 'bold 12px monospace';
+  ui.fillText(treeReturnMode === 'choose' ? 'NAZAJ NA IZBOR (Esc)' : 'NAZAJ NA PREMOR (Esc)', 480, 513);
   if (treeHoverTrait) {
     const tipW = 320, tipH = 150;
     const x = clamp(mouse.x + 12, 8, W - tipW - 8), y = clamp(mouse.y + 12, 76, H - tipH - 38);
@@ -1691,10 +1730,10 @@ function updateMenu() {
   }
   else if (mode === 'pause') {
     if (hit('KeyP', 'Escape', 'Enter')) resumeGame();
-    else if (hit('KeyT')) mode = 'tree';
+    else if (hit('KeyT')) openEvolutionTree('pause');
     else if (hit('KeyS')) saveGame();
   } else if (mode === 'tree') {
-    if (hit('Escape', 'Backspace', 'KeyT')) mode = 'pause';
+    if (hit('Escape', 'Backspace', 'KeyT')) mode = treeReturnMode;
   } else if (mode === 'synergy') {
     if (hit('Enter', 'Space', 'KeyJ')) advanceSynergyCard();
   }
@@ -1702,7 +1741,7 @@ function updateMenu() {
 function resumeGame() { mode = 'play'; Snd.music(room % 5 === 0 ? 'boss' : 'game', room); }
 function pauseAction(index) {
   if (index === 0) resumeGame();
-  else if (index === 1) mode = 'tree';
+  else if (index === 1) openEvolutionTree('pause');
   else if (index === 2) saveGame();
   else if (index === 3) { saveBest(room - 1); toMenu(); }
 }
@@ -1811,6 +1850,7 @@ function cardRect(i) {
   return { x: start + i * 305, y: i === choice.hover ? 342 : 350, w: 290, h: 178 };
 }
 function rerollRect() { return { x: 390, y: 264, w: 180, h: 34 }; }
+function treeButtonRect() { return { x: 582, y: 264, w: 146, h: 34 }; }
 function hoverIndex() {
   if (!choice) return -1;
   for (let i = 0; i < choice.options.length; i++) { const r = cardRect(i); if (mouse.x > r.x && mouse.x < r.x + r.w && mouse.y > r.y && mouse.y < r.y + r.h) return i; }
@@ -1896,12 +1936,17 @@ uic.addEventListener('click', e => {
     return;
   }
   if (mode === 'tree') {
-    if (mouse.y >= 494 && mouse.x >= 386 && mouse.x <= 574) mode = 'pause';
+    if (mouse.y >= 494 && mouse.x >= 386 && mouse.x <= 574) mode = treeReturnMode;
     return;
   }
   if (mode === 'synergy') { advanceSynergyCard(); return; }
   if (mode !== 'choose' || !choice || choiceCool > 0) return;
   const reroll = rerollRect();
+  const treeButton = treeButtonRect();
+  if (choice.kind === 'evo' && mouse.x >= treeButton.x && mouse.x <= treeButton.x + treeButton.w
+    && mouse.y >= treeButton.y && mouse.y <= treeButton.y + treeButton.h) {
+    openEvolutionTree('choose'); return;
+  }
   if (choice.kind === 'evo'
     && mouse.x >= reroll.x && mouse.x <= reroll.x + reroll.w && mouse.y >= reroll.y && mouse.y <= reroll.y + reroll.h) {
     rerollChoice(); return;
@@ -2144,7 +2189,7 @@ function drawChoose() {
   ui.font = '13px monospace'; ui.fillStyle = '#e0e7f7';
   const selectedNiches = pathNiches(evolutionPath);
   const foundationHint = !selectedNiches.length ? 'Prva izbira določi osnovno nišo in telesno smer.'
-    : evolutionPath.founderPicks < 3 ? `Začetne izbire ${evolutionPath.founderPicks}/3: usmeri se v do tri združljive niše.`
+    : selectedNiches.length < 3 ? `Izbrane niše ${selectedNiches.length}/3; ponovitev niše ne zaklene drugih smeri.`
       : `Specializacija: ${selectedNiches.map(niche => NICHES[niche].name).join(' + ')}; druge niše so zaklenjene.`;
   ui.fillText(boss ? 'Izberi eno posebno izboljšavo, ki jo lahko dobiš le po porazu šefa.'
     : secret ? 'Starodavne prilagoditve so edinstvene in na voljo samo v skritih brlogih.'
@@ -2185,6 +2230,7 @@ function drawChoose() {
   statLines.forEach((line, index) => ui.fillText(line, 708, 126 + index * 14));
   if (choice.kind === 'evo') {
     const r = rerollRect();
+    const tree = treeButtonRect();
     const rerollColor = choice.stage === 'niche'
       ? NICHES[choice.options[0] && choice.options[0].niche] && NICHES[choice.options[0].niche].color || '#7fd8ff'
       : NICHES[choice.niche].color;
@@ -2192,6 +2238,9 @@ function drawChoose() {
     ui.strokeStyle = rerollColor; ui.lineWidth = 2; ui.strokeRect(r.x, r.y, r.w, r.h);
     ui.fillStyle = '#fff'; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
     ui.fillText(`${choice.stage === 'niche' ? 'ZAMENJAJ NIŠE' : 'ZAMENJAJ PONUDBO'} · ∞  [R]`, r.x + r.w / 2, r.y + 22);
+    ui.fillStyle = '#171b2c'; ui.fillRect(tree.x, tree.y, tree.w, tree.h);
+    ui.strokeStyle = '#7fd8ff'; ui.lineWidth = 2; ui.strokeRect(tree.x, tree.y, tree.w, tree.h);
+    ui.fillStyle = '#fff'; ui.fillText('DREVO ADAPTACIJ', tree.x + tree.w / 2, tree.y + 22);
   }
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
@@ -2295,11 +2344,14 @@ function frame(now) {
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
   else if (mode === 'synergy') drawSynergyCard();
+  const tree = mode === 'choose' && choice && choice.kind === 'evo' && (() => {
+    const r = treeButtonRect(); return mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
+  })();
   const reroll = mode === 'choose' && choice && choice.kind === 'evo' && (() => {
     const r = rerollRect(); return mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
   })();
   uic.style.cursor = mode === 'tree' ? (treeDrag ? 'grabbing' : 'grab')
-    : mode === 'choose' ? (choiceDrag ? 'grabbing' : reroll || choice && choice.hover >= 0 ? 'pointer' : 'grab')
+    : mode === 'choose' ? (choiceDrag ? 'grabbing' : reroll || tree || choice && choice.hover >= 0 ? 'pointer' : 'grab')
       : mode === 'play' ? 'crosshair' : 'default';
   for (const k in pressed) delete pressed[k];
   requestAnimationFrame(frame);

@@ -53,7 +53,7 @@ function traitAllowedByPath(t, path) {
   const selected = pathNiches(path);
   if (path && path.founderPicks < 2 && (['fire', 'venom'].includes(t.niche) || (t.excludes || []).length)) return false;
   if (!selected.length || selected.includes(t.niche)) return true;
-  if (path.founderPicks >= 3 || selected.length >= 3) return false;
+  if (selected.length >= 3) return false;
   return !selected.some(niche => nichesConflict(niche, t.niche));
 }
 // --- Plenilec ---
@@ -197,8 +197,8 @@ for (const t of TRAITS) {
 }
 const GENERIC = [
   { id: 'g_hp', name: 'Prilagoditev: vzdržljivost', niche: 'bulwark', desc: '+2 zdravja', apply: s => { s.maxHp += 2; } },
-  { id: 'g_dmg', name: 'Prilagoditev: močnejši napad', niche: 'predator', desc: '+0,5 škode', apply: s => { s.dmg += 0.5; } },
-  { id: 'g_spd', name: 'Prilagoditev: hitrost', niche: 'swift', desc: '+20 hitrosti', apply: s => { s.speed += 20; } },
+  { id: 'g_dmg', name: 'Prilagoditev: močnejši napad', niche: 'predator', desc: '+1 škode', apply: s => { s.dmg += 1; } },
+  { id: 'g_spd', name: 'Prilagoditev: hitrost', niche: 'swift', desc: '+40 hitrosti', apply: s => { s.speed += 40; } },
 ];
 const TRAIT_BY_ID = {};
 TRAITS.forEach(t => { TRAIT_BY_ID[t.id] = t; });
@@ -299,7 +299,7 @@ function offers(owned, n = 3, path = null) {
   if (path && !pathNiches(path).length) candidates = candidates.filter(t => traitRequires(t).length === 0);
   else if (path && pathNiches(path).length) candidates = candidates.filter(t => traitAllowedByPath(t, path));
   const selectedNiches = pathNiches(path);
-  const founding = !!path && path.founderPicks < 3;
+  const founding = !!path && selectedNiches.length < 3;
   const newRoots = founding && selectedNiches.length < 3
     ? candidates.filter(t => traitRequires(t).length === 0 && !selectedNiches.includes(t.niche))
     : [];
@@ -332,57 +332,47 @@ function offers(owned, n = 3, path = null) {
     out.push(chosen.t);
     pool.splice(pool.indexOf(chosen), 1);
   }
-  for (const g of GENERIC) if (out.length < n) out.push(g);
   return out;
 }
 function nicheTraitPool(owned, niche, path) {
   const selected = pathNiches(path);
-  if (path && !selected.includes(niche) && (path.founderPicks >= 3 || selected.length >= 3
-    || selected.some(existing => nichesConflict(existing, niche)))) return [];
+  if (path && !selected.includes(niche) && (selected.length >= 3 || selected.some(existing => nichesConflict(existing, niche)))) return [];
   const activeFull = [...owned].filter(id => TRAIT_BY_ID[id] && TRAIT_BY_ID[id].active).length >= 4;
   return TRAITS.filter(t => t.niche === niche && !t.boss && !t.secret && !(activeFull && t.active)
     && traitState(t, owned) === 'open' && traitAllowedByPath(t, path));
 }
 function nicheOffers(owned, path = null, n = 3, avoid = []) {
-  const selected = pathNiches(path), founding = path && path.founderPicks < 3;
-  let niches = Object.keys(NICHES).filter(niche => {
+  const selected = pathNiches(path);
+  const available = Object.keys(NICHES).filter(niche => {
     if (niche === 'boss' || niche === 'syn') return false;
-    if (founding) {
-      if (selected.includes(niche) || selected.length >= 3 || selected.some(existing => nichesConflict(existing, niche))) return false;
-    } else if (selected.length && !selected.includes(niche)) return false;
+    if (!selected.includes(niche) && selected.some(existing => nichesConflict(existing, niche))) return false;
     return nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche);
   });
-  if (!niches.length && founding) {
-    niches = selected.filter(niche => nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche));
-  }
-  const fresh = niches.filter(niche => !avoid.includes(niche));
-  if (fresh.length) niches = fresh;
+  const unselected = available.filter(niche => !selected.includes(niche));
+  const options = selected.length >= 3 ? selected.filter(niche => available.includes(niche))
+    : unselected.length >= n ? unselected : [...unselected, ...selected.filter(niche => available.includes(niche))];
+  const fresh = options.filter(niche => !avoid.includes(niche));
+  const niches = fresh.length ? fresh : options;
   for (let i = niches.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [niches[i], niches[j]] = [niches[j], niches[i]];
   }
-  return niches.slice(0, n);
+  const out = niches.slice(0, n);
+  while (out.length < n && niches.length) out.push(niches[Math.floor(Math.random() * niches.length)]);
+  return out;
 }
 function offersForNiche(owned, niche, n = 3, path = null, avoid = []) {
-  const pool = [...nicheTraitPool(owned, niche, path)];
-  for (const generic of GENERIC) {
-    if (!pool.some(t => t.id === generic.id)) pool.push(generic.niche === niche ? generic : { ...generic, niche });
-  }
+  const pool = [
+    ...nicheTraitPool(owned, niche, path),
+    ...GENERIC.filter(g => g.niche === niche),
+  ];
   const fresh = pool.filter(t => !avoid.includes(t.id));
-  for (let i = fresh.length - 1; i > 0; i--) {
+  const candidates = fresh.length ? fresh : pool;
+  for (let i = candidates.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [fresh[i], fresh[j]] = [fresh[j], fresh[i]];
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
   }
-  const out = fresh.slice(0, n);
-  if (out.length < Math.min(n, pool.length)) {
-    const fill = pool.filter(t => !out.includes(t));
-    for (let i = fill.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [fill[i], fill[j]] = [fill[j], fill[i]];
-    }
-    out.push(...fill.slice(0, Math.min(n, pool.length) - out.length));
-  }
-  return out;
+  return candidates.slice(0, n);
 }
 function bossOffers(owned) { return TRAITS.filter(t => t.boss && !owned.has(t.id)).slice(0, 3); }
 function secretOffers(owned, path = null) {
