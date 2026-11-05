@@ -57,7 +57,9 @@ function traitAllowedByPath(t, path) {
   return !selected.some(niche => nichesConflict(niche, t.niche));
 }
 // --- Plenilec ---
-T('claws', 'Kremplji', 'predator', null, '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'], bodyPlan: 'arthropod' });
+T('claws', 'Kremplji', 'predator', 'mandibles', '+1 škode in daljši doseg', s => { s.dmg += 1; s.reach += 8; }, { excludes: ['horns'], bodyPlan: 'arthropod' });
+T('mandibles', 'Čeljustne klešče', 'predator', null, 'razviješ čvrste čeljusti za prijemanje in +0,5 škode', s => { s.dmg += 0.5; }, { bodyPlan: 'arthropod' });
+T('bite', 'Ugriz', 'predator', null, 'razviješ močnejši ugriz in +0,5 škode; telo dobi bolj strunarsko obliko', s => { s.dmg += 0.5; }, { bodyPlan: 'chordate' });
 T('rending', 'Razdiralni kremplji', 'predator', 'claws', '+1 škode in daljši kremplji', s => { s.dmg += 1; s.reach += 12; });
 T('horns', 'Rogovi', 'predator', null, 'močneje odbiješ sovražnike in povzročiš +0,5 škode; ohraniš štirinožno držo', s => { s.knock += 120; s.dmg += 0.5; }, { excludes: ['claws'], bodyPlan: 'chordate' });
 T('frenzy', 'Bes', 'predator', 'rending', 'napadaš hitreje', s => { s.atkCd *= 0.75; }, { excludes: ['carapace'] });
@@ -69,6 +71,8 @@ T('breaker', 'Lomilec oklepa', 'predator', 'horns', 'napadi prebijejo oklep in p
 T('gore', 'Nabijanje', 'predator', 'ram', 'sunek povzroči veliko škode in odbije sovražnike', s => { s.dashDmg += 2; s.knock += 100; });
 // --- Hitrost ---
 T('legs', 'Močne noge', 'swift', null, 'tečeš hitreje in skačeš višje', s => { s.speed += 40; s.jump += 40; }, { bodyPlan: 'chordate' });
+T('underlegs', 'Podtrebušni koraki', 'swift', 'legs', 'premakneš oporne noge s strani pod trup; +20 hitrosti', s => { s.speed += 20; });
+T('biped', 'Pokončna drža', 'swift', 'underlegs', 'dvigneš prednji del telesa in se premikaš pokončno', s => { s.speed += 10; });
 T('hops', 'Prožen odriv', 'swift', 'legs', '+60 višine skoka', s => { s.jump += 60; });
 T('tail', 'Rep za ravnotežje', 'swift', 'legs', 'nekoliko hitreje tečeš in višje skačeš', s => { s.speed += 25; s.jump += 20; });
 T('dash', 'Hiter sunek', 'swift', 'hops', 'sunkovito se poženeš naprej (K / Shift)', s => { s.dash = true; });
@@ -83,6 +87,7 @@ T('carapace', 'Oklep', 'bulwark', 'hide', '+5 zdravja, vendar tečeš počasneje
 T('fat', 'Maščobne zaloge', 'bulwark', 'hide', '+2 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 2; s.regen += 0.15; });
 T('spikes', 'Bodice', 'bulwark', 'carapace', 'sovražniki, ki se te dotaknejo, prejmejo škodo', s => { s.thorns += 2; });
 T('shell', 'Školjka', 'bulwark', 'carapace', 'ščit izniči prvi zadetek na vsaki stopnji', s => { s.shield = true; });
+T('radialarms', 'Krona iz bodic', 'bulwark', 'spikes', 'razviješ pet radialnih krakov z zaščitnimi bodicami', s => { s.thorns += 2; }, { requires: ['spikes', 'shell'] });
 T('barbed', 'Ježeve bodice', 'bulwark', 'spikes', 'bodice povzročijo dodatno škodo', s => { s.thorns += 3; });
 T('regen', 'Regeneracija', 'bulwark', 'fat', 'zdravje se obnavlja hitreje', s => { s.regen += 0.4; });
 T('bulk', 'Težka postava', 'bulwark', 'fat', '+1 škode in +2 zdravja; težka postava ne more leteti', s => { s.dmg += 1; s.maxHp += 2; }, { excludes: ['wings', 'thermals'] });
@@ -120,6 +125,7 @@ T('cinder', 'Žareči pepel', 'fire', 'scorch', 'goreči sovražniki ob porazu e
 T('magma', 'Magma', 'fire', 'molten', '+4 zdravja in počasno obnavljanje zdravja', s => { s.maxHp += 4; s.regen += 0.2; });
 // --- Voda (led je globoko v veji) ---
 T('gel', 'Sluzasta koža', 'water', null, '+2 zdravja in +20 hitrosti; ne združuje se z ognjem ali letom', s => { s.maxHp += 2; s.speed += 20; }, { excludes: ['ember', 'wings', 'thermals'], bodyPlan: 'mollusk' });
+T('mantle', 'Mehkužčev plašč', 'water', null, 'razviješ mehko, mišičasto stopalo in +2 zdravja', s => { s.maxHp += 2; }, { bodyPlan: 'mollusk' });
 T('gills', 'Škrge', 'water', 'gel', '+2 zdravja in počasna obnova (+0,2 zdravja/s)', s => { s.maxHp += 2; s.regen += 0.2; });
 T('fins', 'Plavuti', 'water', 'gel', 'odkleneš sunek, če ga še nimaš, in pridobiš +30 hitrosti', s => { s.dash = true; s.speed += 30; });
 T('tentacle', 'Lovke', 'water', 'gel', '+18 dosega in +0,5 škode', s => { s.reach += 18; s.dmg += 0.5; });
@@ -153,8 +159,8 @@ T('stormcloud', 'Nevihtni oblak', 'air', 'thermals', 'ob pristanku udariš ob tl
 T('tempest', 'Vihar', 'air', 'bolt', 'strela lahko zadene do 5 sovražnikov', s => { s.boltN = 5; });
 T('thunderlord', 'Gospodar nevihte', 'air', 'conduct', '+1 škode, hitrejši napadi in močnejše strele', s => { s.dmg += 1; s.atkCd *= 0.85; s.arcDmg += 1; }, { requires: ['conduct', 'thermals'], scale: 1.1 });
 T('stinger', 'Strupeno želo', 'venom', 'fangs', 'z repnim želom okrepiš strup (+0,5) in njegov učinek (+1 s)', s => { s.stinger = true; s.poison += 0.5; s.poisonDur += 1; });
-T('pincers', 'Klešče', 'predator', 'horns', '+0,5 škode in +10 dosega; ohraniš štirinožno držo', s => { s.dmg += 0.5; s.reach += 10; }, { excludes: ['claws'] });
-T('manylegs', 'Šest nog', 'bulwark', 'carapace', 'razviješ dodaten par nog in pridobiš +20 hitrosti', s => { s.speed += 20; });
+T('pincers', 'Rakove klešče', 'predator', 'horns', '+0,5 škode in +10 dosega; razviješ široke, prijemalne klešče', s => { s.dmg += 0.5; s.reach += 10; }, { excludes: ['claws'] });
+T('manylegs', 'Velikočlenonožec', 'bulwark', 'carapace', 'tvoje oklepljeno telo razvije več parov nog in pridobi +20 hitrosti', s => { s.speed += 20; });
 T('creepingbody', 'Plosko telo', 'land', 'roots', 'telo se razširi in splošči; razviješ značilno drseče gibanje', s => { s.speed += 15; }, { bodyPlan: 'flatworm' });
 // Skrite starodavne prilagoditve so na voljo samo kot nagrada za raziskovanje brlogov.
 T('heartroot', 'Koreninsko srce', 'land', null, '+2 zdravja in počasna obnova (+0,25 zdravja/s)', s => { s.maxHp += 2; s.regen += 0.25; }, { secret: true });
@@ -169,14 +175,14 @@ T('cracker', 'Lomilec oklepa', 'boss', null, 'prebiješ sovražnikov oklep in po
 T('alpha', 'Alfa naskok', 'boss', null, 'tečeš in napadaš hitreje; odkleneš močnejši sunek', s => { s.atkCd *= 0.75; s.speed += 40; s.dash = true; s.dashDmg += 1; }, { boss: true });
 
 const TRAIT_DIMENSIONS = {
-  body: ['claws', 'horns', 'legs', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'gills', 'fins', 'tentacle', 'roots', 'vines', 'feathers', 'skyshroud', 'stinger', 'pincers', 'creepingbody'],
-  movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'swoop', 'gust', 'stormcloud', 'gale', 'alpha'],
+  body: ['claws', 'mandibles', 'bite', 'horns', 'legs', 'underlegs', 'biped', 'tail', 'wings', 'fangs', 'glands', 'hide', 'gel', 'mantle', 'gills', 'fins', 'tentacle', 'roots', 'vines', 'feathers', 'skyshroud', 'stinger', 'pincers', 'creepingbody', 'radialarms'],
+  movement: ['hops', 'dash', 'phase', 'flyer', 'sprint', 'pounce', 'thermals', 'swoop', 'gust', 'stormcloud', 'gale', 'alpha', 'manylegs'],
   offense: ['rending', 'frenzy', 'cleave', 'apex', 'bloodscent', 'ram', 'breaker', 'gore', 'spit', 'plague', 'ambush', 'roar', 'trample',
     'meteor', 'quills', 'miasma', 'epidemic', 'neuro', 'ember', 'breath', 'scorch', 'inferno', 'cinder', 'frost', 'torrent',
     'firevortex', 'blizzard', 'permafrost', 'snare', 'bloomburst', 'static', 'conduct', 'bolt', 'tempest', 'thunderlord', 'cracker', 'worldfang', 'ancientspore'],
   survival: ['carapace', 'stonehide', 'fat', 'spikes', 'shell', 'barbed', 'regen', 'bulk', 'undying', 'camo', 'cloud', 'slow', 'titan',
     'curl', 'colossus', 'molten', 'magma', 'iceshell', 'leviathan', 'bloom', 'thornvine', 'spores', 'canopy', 'treant', 'mossmantle', 'giantbloom',
-    'manylegs', 'bossheart', 'heartroot', 'tidalheart', 'ironbloom'],
+    'bossheart', 'heartroot', 'tidalheart', 'ironbloom'],
 };
 const TRAIT_DIMENSION = {};
 for (const [dimension, ids] of Object.entries(TRAIT_DIMENSIONS)) {
@@ -337,12 +343,20 @@ function nicheTraitPool(owned, niche, path) {
   return TRAITS.filter(t => t.niche === niche && !t.boss && !t.secret && !(activeFull && t.active)
     && traitState(t, owned) === 'open' && traitAllowedByPath(t, path));
 }
-function nicheOffers(owned, path = null, n = 3) {
-  let niches = Object.keys(NICHES).filter(niche => niche !== 'boss' && niche !== 'syn'
-    && (nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche)));
-  if (path && pathNiches(path).length && (path.founderPicks >= 3 || pathNiches(path).length >= 3)) {
-    niches = niches.filter(niche => pathNiches(path).includes(niche));
+function nicheOffers(owned, path = null, n = 3, avoid = []) {
+  const selected = pathNiches(path), founding = path && path.founderPicks < 3;
+  let niches = Object.keys(NICHES).filter(niche => {
+    if (niche === 'boss' || niche === 'syn') return false;
+    if (founding) {
+      if (selected.includes(niche) || selected.length >= 3 || selected.some(existing => nichesConflict(existing, niche))) return false;
+    } else if (selected.length && !selected.includes(niche)) return false;
+    return nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche);
+  });
+  if (!niches.length && founding) {
+    niches = selected.filter(niche => nicheTraitPool(owned, niche, path).length || GENERIC.some(g => g.niche === niche));
   }
+  const fresh = niches.filter(niche => !avoid.includes(niche));
+  if (fresh.length) niches = fresh;
   for (let i = niches.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [niches[i], niches[j]] = [niches[j], niches[i]];
@@ -350,8 +364,10 @@ function nicheOffers(owned, path = null, n = 3) {
   return niches.slice(0, n);
 }
 function offersForNiche(owned, niche, n = 3, path = null, avoid = []) {
-  const pool = nicheTraitPool(owned, niche, path);
-  if (!pool.length) pool.push(...GENERIC.filter(g => g.niche === niche));
+  const pool = [...nicheTraitPool(owned, niche, path)];
+  for (const generic of GENERIC) {
+    if (!pool.some(t => t.id === generic.id)) pool.push(generic.niche === niche ? generic : { ...generic, niche });
+  }
   const fresh = pool.filter(t => !avoid.includes(t.id));
   for (let i = fresh.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
