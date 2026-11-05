@@ -1730,16 +1730,27 @@ const NICHE_INTENTS = {
   air: 'Zračni življenjski slog in pernati telesni načrt.',
 };
 function selectNiche(niche) {
-  if (!pathNiches(evolutionPath).includes(niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(niche);
-  const options = offersForNiche(owned, niche, 3, evolutionPath);
+  const niches = pathNiches(evolutionPath);
+  const optionPath = niches.includes(niche) ? evolutionPath
+    : { ...evolutionPath, niches: [...niches, niche].slice(0, 3) };
+  const options = offersForNiche(owned, niche, 3, optionPath);
   if (!options.length) { nextChoice(); return; }
-  choice = { kind: 'evo', stage: 'trait', niche, options, hover: -1, rerolls: 0 };
+  choice = { kind: 'evo', stage: 'trait', niche, optionPath, options, hover: -1, rerolls: 0 };
   choiceCool = 0.3;
   choiceModelRotation = 0;
 }
 function rerollChoice() {
-  if (mode !== 'choose' || !choice || choice.kind !== 'evo' || choice.stage !== 'trait') return;
-  choice.options = offersForNiche(owned, choice.niche, 3, evolutionPath, choice.options.map(option => option.id));
+  if (mode !== 'choose' || !choice || choice.kind !== 'evo') return;
+  if (choice.stage === 'niche') {
+    choice.options = nicheOffers(owned, evolutionPath, 3, choice.options.map(option => option.niche))
+      .map(niche => ({
+        id: 'niche_' + niche, niche, name: NICHES[niche].name, nicheChoice: true,
+        previewId: (nicheTraitPool(owned, niche, evolutionPath)[0] || {}).id,
+      }));
+  } else {
+    choice.options = offersForNiche(owned, choice.niche, 3, choice.optionPath, choice.options.map(option => option.id));
+  }
+  if (!choice.options.length) return;
   choice.hover = -1;
   choice.rerolls++;
 }
@@ -1752,7 +1763,7 @@ function nextChoice() {
         previewId: (nicheTraitPool(owned, niche, evolutionPath)[0] || {}).id,
       }));
     if (opts.length) {
-      choice = { kind: k === 'evo' ? 'evo' : k, stage: k === 'evo' ? 'niche' : 'trait', options: opts, hover: -1 };
+      choice = { kind: k === 'evo' ? 'evo' : k, stage: k === 'evo' ? 'niche' : 'trait', options: opts, hover: -1, rerolls: 0 };
       choiceCool = 0.4; choiceModelRotation = 0; return;
     }
   }
@@ -1766,6 +1777,7 @@ function pick(opt) {
     if (!pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(opt.niche);
     evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
   } else if (opt.id.startsWith('g_') && !opt.boss && !opt.secret && !opt.syn) {
+    if (!pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) evolutionPath.niches.push(opt.niche);
     evolutionPath.founderPicks = Math.min(3, evolutionPath.founderPicks + 1);
   } else if (opt.secret && !pathNiches(evolutionPath).includes(opt.niche) && pathNiches(evolutionPath).length < 3) {
     evolutionPath.niches.push(opt.niche);
@@ -1890,7 +1902,7 @@ uic.addEventListener('click', e => {
   if (mode === 'synergy') { advanceSynergyCard(); return; }
   if (mode !== 'choose' || !choice || choiceCool > 0) return;
   const reroll = rerollRect();
-  if (choice.kind === 'evo' && choice.stage === 'trait'
+  if (choice.kind === 'evo'
     && mouse.x >= reroll.x && mouse.x <= reroll.x + reroll.w && mouse.y >= reroll.y && mouse.y <= reroll.y + reroll.h) {
     rerollChoice(); return;
   }
@@ -1907,7 +1919,7 @@ function updateChoose(dt) {
   if (!choice) return;
   choice.hover = hoverIndex();
   if (choiceCool > 0) return;
-  if (choice.kind === 'evo' && choice.stage === 'trait' && hit('KeyR')) { rerollChoice(); return; }
+  if (choice.kind === 'evo' && hit('KeyR')) { rerollChoice(); return; }
   for (let i = 0; i < choice.options.length; i++) if (hit('Digit' + (i + 1), 'Numpad' + (i + 1))) {
     if (choice.stage === 'niche') selectNiche(choice.options[i].niche);
     else pick(choice.options[i]);
@@ -1952,7 +1964,10 @@ function animatePlayer(dt, t) {
     if (atk >= 0) a.rotation.z = -0.8 + 3.0 * Math.min(1, atk * (i ? 1.0 : 1.25));
     else a.rotation.z = (i ? -sw : sw) * 0.7 * mv + (p.ground || showcase() ? 0.1 : -0.5);
   });
-  rig.tail.forEach((s, i) => { s.rotation.y = Math.sin(t * 5 + i * 0.7) * 0.22 * (1 + mv); s.rotation.z = -0.04 * i + Math.sin(t * 4 + i) * 0.05 + (mv ? 0.05 : 0); });
+  rig.tail.forEach((s, i) => {
+    s.rotation.y = Math.sin(t * 5 + i * 0.7) * 0.22 * (1 + mv);
+    s.rotation.z = (s.userData.baseRotationZ || 0) - 0.04 * i + Math.sin(t * 4 + i) * 0.05 + (mv ? 0.05 : 0);
+  });
   rig.bodySegments.forEach((segment, i) => {
     const center = (rig.bodySegments.length - 1) / 2, offset = i - center;
     const wave = Math.sin(p.phase - i * 0.8) * (airborne ? 0.075 : mv ? 0.035 : 0.008);
@@ -1967,7 +1982,7 @@ function animatePlayer(dt, t) {
   if (rig.orbit) rig.orbit.rotation.y += dt * 2.2;
   rig.glands.forEach(m => { m.emissiveIntensity = 0.55 + 0.4 * Math.sin(t * 3); });
   if (rig.glow) rig.glow.material.opacity = 0.1 + 0.05 * Math.sin(t * 2.5);
-  rig.torso.rotation.z = -Math.min(1, speed / stats.speed) * 0.12 - (p.dashT > 0 ? 0.35 : 0);
+  rig.torso.rotation.z = (rig.upright ? 0.78 : 0) - Math.min(1, speed / stats.speed) * 0.12 - (p.dashT > 0 ? 0.35 : 0);
   rig.torso.scale.y = 1 + (p.ground ? 0.015 : 0.04 * Math.sin(p.phase));
   const bs = rig.baseScale, airborneStretch = airborne ? clamp(-p.vy / Math.max(stats.jump, 1), 0, 1) * 0.16 : 0;
   const stretch = airborneStretch + jumpExtend * 0.12;
@@ -2168,12 +2183,15 @@ function drawChoose() {
     `Zmanjšanje škode: ${Math.round(stats.damageReduction * 100)} % · sunek: 30 %${stats.curl ? ' · klubko: 65 %' : ''}`,
   ];
   statLines.forEach((line, index) => ui.fillText(line, 708, 126 + index * 14));
-  if (choice.kind === 'evo' && choice.stage === 'trait') {
+  if (choice.kind === 'evo') {
     const r = rerollRect();
+    const rerollColor = choice.stage === 'niche'
+      ? NICHES[choice.options[0] && choice.options[0].niche] && NICHES[choice.options[0].niche].color || '#7fd8ff'
+      : NICHES[choice.niche].color;
     ui.fillStyle = '#171b2c'; ui.fillRect(r.x, r.y, r.w, r.h);
-    ui.strokeStyle = NICHES[choice.niche].color; ui.lineWidth = 2; ui.strokeRect(r.x, r.y, r.w, r.h);
+    ui.strokeStyle = rerollColor; ui.lineWidth = 2; ui.strokeRect(r.x, r.y, r.w, r.h);
     ui.fillStyle = '#fff'; ui.font = 'bold 12px monospace'; ui.textAlign = 'center';
-    ui.fillText(`ZAMENJAJ PONUDBO · ∞  [R]`, r.x + r.w / 2, r.y + 22);
+    ui.fillText(`${choice.stage === 'niche' ? 'ZAMENJAJ NIŠE' : 'ZAMENJAJ PONUDBO'} · ∞  [R]`, r.x + r.w / 2, r.y + 22);
   }
   choice.options.forEach((t, i) => {
     const r = cardRect(i), col = NICHES[t.niche].color, hv = i === choice.hover;
@@ -2259,7 +2277,8 @@ function frame(now) {
       const previewId = h && (h.previewId || (h.nicheChoice ? null : h.id));
       const previewSet = previewId && !previewId.startsWith('g_') ? new Set([...owned, previewId]) : owned;
       const previewPath = h && h.nicheChoice && !pathNiches(evolutionPath).includes(h.niche)
-        ? { ...evolutionPath, niches: [...pathNiches(evolutionPath), h.niche].slice(0, 3) } : evolutionPath;
+        ? { ...evolutionPath, niches: [...pathNiches(evolutionPath), h.niche].slice(0, 3) }
+        : choice.stage === 'trait' ? choice.optionPath || evolutionPath : evolutionPath;
       setPlayerModel(previewSet, previewPath);
     } else setPlayerModel(owned);
     animatePlayer(rawDt, time); animateEnemies(rawDt, time); updateCamera(rawDt, time);
@@ -2276,7 +2295,7 @@ function frame(now) {
   else if (mode === 'pause') drawPause();
   else if (mode === 'tree') drawTree();
   else if (mode === 'synergy') drawSynergyCard();
-  const reroll = mode === 'choose' && choice && choice.kind === 'evo' && choice.stage === 'trait' && (() => {
+  const reroll = mode === 'choose' && choice && choice.kind === 'evo' && (() => {
     const r = rerollRect(); return mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
   })();
   uic.style.cursor = mode === 'tree' ? (treeDrag ? 'grabbing' : 'grab')

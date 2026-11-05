@@ -111,12 +111,17 @@ function buildCreature(owned, path = null) {
   const nTraits = [...owned].filter(id => TRAIT_BY_ID[id] && !TRAIT_BY_ID[id].boss).length;
   const invest = nicheInvest(owned);
   const primaryNiche = dominantNiche(owned, path) || pathNiches(path)[0];
-  const bodyPlan = NICHE_BODY_PLANS[primaryNiche];
+  const bodyPlan = has('mantle') || has('gel') ? 'mollusk'
+    : has('radialarms') ? 'echinoderm'
+      : has('manylegs') ? 'arthropod' : NICHE_BODY_PLANS[primaryNiche];
   const bodyPlans = new Set(bodyPlan ? [bodyPlan] : []);
-  const bodyPlanGrowth = primaryNiche ? Math.min(1, invest[primaryNiche] / 8) : 0;
+  const bodyPlanGrowth = bodyPlan === 'mollusk' ? Math.min(1, invest.water / 8)
+    : primaryNiche ? Math.min(1, invest[primaryNiche] / 8) : 0;
   const swiftGrowth = Math.min(1, invest.swift / 8), predatorGrowth = Math.min(1, invest.predator / 8);
   const legGrowth = Math.min(1, (invest.swift * 0.6 + invest.predator * 0.4) / 8);
   const venomGrowth = Math.min(1, invest.venom / 8), airGrowth = Math.min(1, invest.air / 8);
+  const locomotionPicks = ['legs', 'underlegs', 'biped', 'fins', 'thermals', 'wings', 'manylegs'].filter(has).length;
+  const trunkGrowth = Math.min(1, locomotionPicks / 2);
   const headGrowth = Math.min(1, Math.max(0, nTraits - 1) / 7);
   const manyLegs = has('manylegs');
   const quad = manyLegs || ['legs', 'alpha', 'bulk', 'carapace', 'spikes', 'stonehide', 'ironbloom'].some(has)
@@ -137,39 +142,41 @@ function buildCreature(owned, path = null) {
   const heightScale = bodyPlan === 'nematode' ? 0.76 : bodyPlan === 'flatworm' ? 0.72
     : bodyPlan === 'annelid' ? 0.84 : bodyPlan === 'mollusk' || bodyPlan === 'echinoderm' ? 1.12
       : bodyPlan === 'avian' ? 0.92 : 1;
-  const tr = [(0.55 - headGrowth * 0.05) * lengthScale, (0.16 - headGrowth * 0.015) * heightScale, 0.18 - headGrowth * 0.035];
+  const tr = [(0.55 - headGrowth * 0.05) * lengthScale, (0.16 + trunkGrowth * 0.035 - headGrowth * 0.015) * heightScale, 0.18 - headGrowth * 0.035];
   const ty = L + 0.31 - headGrowth * 0.025;
   model.scale.setScalar(0.95 * bulk);
 
   // noge (skupine obstajajo vedno zaradi animacije, mreže le če imaš noge)
   rig.legs = [];
   const legPoints = legsOn
-    ? manyLegs ? [[-0.24, -1], [-0.24, 1], [0, -1], [0, 1], [0.24, -1], [0.24, 1]]
+    ? manyLegs ? [-0.38, -0.28, -0.18, -0.08, 0.02, 0.12, 0.22, 0.32].flatMap(x => [[x, -1], [x, 1]])
       : [[-0.2, -1], [-0.2, 1], [0.18, -1], [0.18, 1]]
     : [];
   for (const [x, side] of legPoints) {
     const hip = new THREE.Group();
-    hip.position.set(x, L, side * 0.13);
+    hip.position.set(x, has('underlegs') ? L : ty, side * tr[2] * 0.9);
     model.add(hip);
     if (legsOn) {
-      limb(hip, bodyM, L, has('hops') ? 0.095 : quad ? 0.085 : 0.075);
-      mk(hip, GEO.creatureBody, bodyM, [0, -L * 0.48, 0], [0.07, 0.075, 0.07]);
-      if (has('hops') || has('pounce')) mk(hip, GEO.sph, bodyM, [0.02, -L * 0.2, 0], [0.13, 0.15, 0.1]);
-      mk(hip, GEO.creatureBody, darkM, [0.07, -L + 0.02, 0], [0.14 + legGrowth * 0.03, 0.06, 0.09]);
+      const legLength = has('underlegs') ? L : 0.17 + legGrowth * 0.1;
+      limb(hip, bodyM, legLength, has('hops') ? 0.095 : manyLegs ? 0.045 : 0.075);
+      mk(hip, GEO.creatureBody, bodyM, [0, -legLength * 0.48, 0], [0.07, 0.075, 0.07]);
+      if (has('hops') || has('pounce')) mk(hip, GEO.sph, bodyM, [0.02, -legLength * 0.2, 0], [0.13, 0.15, 0.1]);
+      mk(hip, GEO.creatureBody, darkM, [0.07, -legLength + 0.02, 0], [0.14 + legGrowth * 0.03, 0.06, 0.09]);
       const toes = has('pounce') || has('alpha') ? 3 : has('claws') ? 2 : 0;
-      for (let i = 0; i < toes; i++) spike(hip, boneM, [0.17, -L + 0.03, (i - (toes - 1) / 2) * 0.045], 0.022, has('pounce') ? 0.13 : 0.08, [0, 0, -1.6]);
+      for (let i = 0; i < toes; i++) spike(hip, boneM, [0.17, -legLength + 0.03, (i - (toes - 1) / 2) * 0.045], 0.022, has('pounce') ? 0.13 : 0.08, [0, 0, -1.6]);
     }
     rig.legs.push(hip);
   }
 
   // rep
-  const segs = tailOn ? 1 + Math.floor(swiftGrowth * 4) + (has('tail') ? 1 : 0) + (has('sprint') ? 1 : 0) : 0;
+  const segs = tailOn ? 1 + Math.floor(swiftGrowth * 4) + (has('tail') ? 1 : 0) + (has('sprint') ? 1 : 0) + (has('stinger') ? 3 : 0) : 0;
   const segLen = 0.12 + swiftGrowth * 0.07;
   let tp = model, tpos = [-0.2, L + 0.2, 0];
   for (let i = 0; i < segs; i++) {
     const piv = new THREE.Group();
     piv.position.set(tpos[0], tpos[1], tpos[2]);
     if (has('stinger')) piv.rotation.z = -0.17;
+    piv.userData.baseRotationZ = piv.rotation.z;
     tp.add(piv);
     const r = 0.11 * (1 - i / (segs + 1)) + 0.02;
     mk(piv, GEO.taper, bodyM, [-segLen / 2, 0, 0], [r, segLen, r], [0, 0, Math.PI / 2]);
@@ -189,16 +196,17 @@ function buildCreature(owned, path = null) {
   const torso = new THREE.Group();
   model.add(torso);
   rig.torso = torso;
+  rig.upright = has('biped');
   rig.bodySegments = [];
   const segmentRadii = [0.09, 0.12, 0.145, 0.14, 0.115, 0.065];
-  const segmentStep = 0.155 * lengthScale;
+  const segmentStep = 0.155 * lengthScale * (1 - trunkGrowth * 0.4);
   for (let i = 0; i < segmentRadii.length; i++) {
     const segment = new THREE.Group();
     segment.position.set(0.27 - i * segmentStep, ty, 0);
     segment.userData.baseX = segment.position.x;
     segment.userData.baseY = segment.position.y;
     torso.add(segment);
-    const radius = segmentRadii[i] * (0.9 + heightScale * 0.1) * thick;
+    const radius = segmentRadii[i] * (0.9 + heightScale * 0.1) * thick * (1 + trunkGrowth * 0.62);
     mk(segment, GEO.creatureBody, bodyM, [0, 0, 0],
       [segmentStep * 0.96, radius, radius * 1.18 * fatK]);
     rig.bodySegments.push(segment);
@@ -215,11 +223,24 @@ function buildCreature(owned, path = null) {
   }
   // hrbet: bodice, oklep, školjka, kužni mehurji
   if (has('carapace')) for (let i = 0; i < 1 + Math.floor(defenseGrowth * 2); i++) mk(torso, GEO.sph, armorM, [-0.18 - i * 0.11, ty + 0.1 - i * 0.1, 0], [0.06, 0.07, 0.16], [0, 0, 0.2]);
-  if (has('shell')) mk(torso, GEO.sph, armorM, [-0.16, ty + 0.02, 0], [0.13, 0.27, 0.22], [0, 0, 0.15]);
+  if (has('shell')) {
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), armorM);
+    dome.position.set(-0.15, ty + tr[1] * 0.72, 0);
+    dome.scale.set(0.3, 0.17, 0.29);
+    dome.castShadow = true;
+    torso.add(dome);
+    const lip = mk(torso, GEO.torus, boneM, [-0.15, ty + tr[1] * 0.73, 0], [0.28, 0.27, 0.28], [Math.PI / 2, 0, 0]);
+    lip.castShadow = false;
+  }
   if (has('curl')) {
     mk(torso, GEO.sph, armorM, [-0.12, ty + 0.05, 0], [0.18, 0.22, 0.25], [0, 0, 0.12]);
   }
   if (has('spikes')) for (let i = 0; i < (has('barbed') ? 4 : 3); i++) spike(torso, boneM, [-0.18 - i * 0.005, ty + 0.24 - i * 0.12, i % 2 ? 0.08 : -0.08], 0.027, has('barbed') ? 0.15 : 0.09, [0, 0, 1.2]);
+  if (has('radialarms')) for (let i = 0; i < 5; i++) {
+    const angle = i * Math.PI * 2 / 5, x = -0.08 + Math.cos(angle) * 0.18, y = ty + Math.sin(angle) * 0.16;
+    mk(torso, GEO.creatureBody, armorM, [x, y, 0], [0.2, 0.055, 0.065], [0, 0, angle]);
+    spike(torso, boneM, [x + Math.cos(angle) * 0.12, y + Math.sin(angle) * 0.12, 0], 0.026, 0.13, [0, 0, angle - Math.PI / 2]);
+  }
   if (has('plague')) for (let i = 0; i < 2; i++) mk(torso, GEO.sph, glowMat('#9be15d', 0.38), [-0.18, ty + 0.1 - i * 0.16, (i ? 1 : -1) * 0.1], [0.04, 0.04, 0.04]);
   if (has('bossheart')) {
     mk(torso, GEO.sph, goldM, [0.12, ty + 0.02, 0], [0.25, 0.21, 0.27]);
@@ -256,10 +277,18 @@ function buildCreature(owned, path = null) {
         for (let i = -1; i <= 1; i++) spike(piv, glowMat('#ffd24a', 1.2), [0.05, -armLen - 0.05, i * 0.04], 0.018, 0.16, [0, 0, -1.5]);
       }
       if (has('pincers')) for (const side of [-1, 1]) {
-        const clawRoot = [0.11, -armLen - 0.015, side * 0.04];
-        mk(piv, GEO.sph, armorM, clawRoot, [0.075, 0.06, 0.075]);
-        spike(piv, boneM, [clawRoot[0] + 0.02, clawRoot[1] + 0.035, side * 0.075], 0.026, 0.18, [0, side * 0.28, -1.25]);
-        spike(piv, boneM, [clawRoot[0] + 0.025, clawRoot[1] - 0.035, side * 0.075], 0.022, 0.15, [0, -side * 0.22, -1.82]);
+        const size = side > 0 ? 1.24 : 0.82;
+        const clawX = 0.1, clawY = -armLen - 0.025, clawZ = side * 0.035;
+        mk(piv, GEO.creatureBody, armorM, [clawX, clawY, clawZ], [0.09 * size, 0.065 * size, 0.065 * size]);
+        for (const sign of [-1, 1]) {
+          const finger = mk(piv, GEO.creatureBody, boneM,
+            [clawX + 0.095 * size, clawY + sign * 0.04 * size, clawZ],
+            [0.1 * size, 0.025 * size, 0.028 * size], [0, 0, sign * 0.26]);
+          mk(piv, GEO.creatureBody, boneM,
+            [clawX + 0.17 * size, clawY + sign * 0.052 * size, clawZ],
+            [0.045 * size, 0.021 * size, 0.023 * size], [0, 0, sign * 0.45]).castShadow = false;
+          finger.castShadow = false;
+        }
       }
     }
     piv.userData.side = side;
@@ -268,7 +297,7 @@ function buildCreature(owned, path = null) {
 
   // glava (pri slimeu le izboklina z obrazom)
   const head = new THREE.Group();
-  head.position.set(0.2, ty + 0.13 + headGrowth * 0.25, 0);
+  head.position.set(0.36 * lengthScale, ty, 0);
   torso.add(head);
   rig.head = head;
   const hs = (0.88 + headGrowth * 0.12) * (has('apex') ? 1.1 : 1);
@@ -280,8 +309,17 @@ function buildCreature(owned, path = null) {
     mk(head, GEO.creatureBody, eyeBase, [0.07, 0.035, side * 0.13], [0.035, 0.038, 0.03]);
     mk(head, GEO.creatureBody, pupilM, [0.092, 0.036, side * 0.148], [0.015, 0.022, 0.014]);
     if (has('hide')) mk(head, GEO.box, darkM, [0.1, 0.12, side * 0.1], [0.12, 0.03, 0.07], [side * 0.3, 0, 0]);
+    if (has('mandibles')) {
+      const jaw = mk(head, GEO.creatureBody, armorM, [0.18, -0.075, side * 0.055], [0.11, 0.035, 0.03], [0, 0, side * 0.28]);
+      jaw.castShadow = false;
+    }
   }
   if (has('fangs')) for (const side of [-1, 1]) spike(head, boneM, [0.28, -0.07, side * 0.05], 0.022, has('glands') ? 0.12 : 0.08, [Math.PI, 0, 0]);
+  if (has('bite')) for (const side of [-1, 1]) {
+    const tooth = mk(head, GEO.creatureBody, boneM, [0.2, -0.08, side * 0.05], [0.045, 0.055, 0.035], [0, 0, Math.PI]);
+    tooth.castShadow = false;
+  }
+  if (bodyPlan === 'mollusk' && has('spit')) spike(head, glowMat('#9be15d', 0.75), [0.22, -0.045, 0], 0.035, 0.2, [0, 0, -Math.PI / 2]);
   if (has('apex')) for (const side of [-1, 1]) for (let i = 0; i < 3; i++) spike(head, boneM, [0.2 + i * 0.045, -0.085, side * 0.075], 0.017, 0.06, [Math.PI, 0, 0]);
   if (has('horns')) {
     const hl = has('gore') ? 0.38 : has('ram') ? 0.27 : 0.17, hr = has('gore') ? 0.065 : has('ram') ? 0.055 : 0.04;
